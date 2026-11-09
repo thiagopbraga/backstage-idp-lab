@@ -1,20 +1,14 @@
-# code-quality
+# @internal/backstage-plugin-code-quality
 
-Welcome to the code-quality plugin!
+Frontend plugin (new frontend system) for the code-quality backend.
 
-_This plugin was created through the Backstage CLI_
+- `codeQualityApiRef` + `CodeQualityClient` (DiscoveryApi + FetchApi), registered with `ApiBlueprint`.
+- `entity-card:code-quality/overview` (`EntityCardBlueprint`): SonarQube quality gate and metrics, plus the latest GitHub Actions runs. It only renders for entities with `sonarqube.org/project-key` or `github.com/project-slug`.
 
-## Getting started
+The app discovers it automatically (`app.packages: all`). To turn the card off without code changes:
 
-Your plugin has been added to the app in this repository, meaning you'll be able
-to access it by running `yarn start` in the root directory, and then navigating
-to [/code-quality](http://localhost:3000/code-quality).
-
-This plugin is built with Backstage's [frontend
-system](https://backstage.io/docs/frontend-system/architecture/index), and you
-can find more information about building plugins in the [plugin builder
-documentation](https://backstage.io/docs/frontend-system/building-plugins/index).
-
-You can also serve the plugin in isolation by running `yarn start` in the plugin directory.
-This method of serving the plugin provides quicker iteration speed and a faster startup and hot reloads.
-It is only meant for local development, and the setup for it can be found inside the [/dev](./dev) directory.
+```yaml
+app:
+  extensions:
+    - entity-card:code-quality/overview: false
+```
