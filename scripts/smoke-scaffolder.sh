@@ -37,7 +37,7 @@ wait_task() {
 }
 
 echo "--- rejected run"
-BAD_ID=$(run_task '{"name":"ClaimsIntake","description":"smoke","owner":"group:default/ghost-team","tier":"tier-1","criticality":"low","dataClassification":"internal","publishTarget":"local"}')
+BAD_ID=$(run_task '{"name":"ClaimsIntake","description":"smoke","owner":"group:default/claims-squad","tier":"tier-1","criticality":"low","dataClassification":"internal","publishTarget":"local"}')
 BAD_STATUS=$(wait_task "$BAD_ID")
 BAD_MSG=$(curl -fsS "${AUTH[@]}" "$BASE_URL/api/scaffolder/v2/tasks/$BAD_ID/events" |
   jq -r '[.[] | select(.body.stepId == "governance" and .body.status == "failed") | .body.message][0] // ""')
@@ -45,7 +45,7 @@ echo "task $BAD_ID -> $BAD_STATUS"
 echo "$BAD_MSG" | grep -v '^    at '
 test "$BAD_STATUS" = failed
 echo "$BAD_MSG" | grep -q 'FastFlow governance check failed'
-echo "$BAD_MSG" | grep -q 'ghost-team'
+echo "$BAD_MSG" | grep -q 'tier-1 services must have criticality'
 
 echo "--- successful run"
 GOOD_ID=$(run_task '{"name":"claims-smoke-api","description":"smoke","owner":"group:default/claims-squad","tier":"tier-2","criticality":"high","dataClassification":"confidential","publishTarget":"local"}')
