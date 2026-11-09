@@ -1,0 +1,193 @@
+# FastFlow golden path: NestJS service.
+# The first step is the custom governance gate (fastflow:governance:validate):
+# if a corporate rule is broken the task fails BEFORE any file is generated.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: fastflow-nestjs-service
+  title: NestJS service (FastFlow golden path)
+  description: >-
+    Creates a production-ready NestJS service with health checks, Dockerfile,
+    CI, TechDocs and catalog-info.yaml carrying the FastFlow governance
+    annotations. Validates naming, ownership and governance rules first.
+  tags: [recommended, nestjs, typescript, golden-path]
+  links:
+    - url: https://github.com/thiagopbraga/backstage-idp-lab#etapa-3--golden-path-com-validação-de-governança
+      title: How this golden path works
+      icon: docs
+spec:
+  owner: group:default/fastflow
+  type: service
+
+  parameters:
+    - title: Service
+      required: [name, owner, description]
+      properties:
+        name:
+          title: Name
+          type: string
+          description: kebab-case, 3-40 chars, ending with -api, -service, -worker, -bff or -web (e.g. claims-intake-api)
+          # No client-side `pattern` on purpose: the form is UX, the server-side
+          # action is the control (it also protects API/CLI callers).
+          maxLength: 63
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          ui:widget: textarea
+          ui:options:
+            rows: 2
+        owner:
+          title: Owner team
+          type: string
+          description: Group that owns the service (must exist in the catalog)
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              - kind: Group
+            defaultKind: Group
+            allowArbitraryValues: true
+        system:
+          title: System
+          type: string
+          description: Optional system this service belongs to
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              - kind: System
+            defaultKind: System
+
+    - title: Governance
+      required: [tier, criticality, dataClassification]
+      properties:
+        tier:
+          title: Tier
+          type: string
+          enum: [tier-1, tier-2, tier-3]
+          enumNames:
+            - 'Tier 1 - customer facing, 24x7'
+            - 'Tier 2 - business critical, business hours'
+            - 'Tier 3 - internal / best effort'
+        criticality:
+          title: Criticality
+          type: string
+          enum: [low, medium, high]
+        dataClassification:
+          title: Data classification
+          type: string
+          description: '"restricted" = personal/sensitive data (LGPD), cannot be tier-3'
+          enum: [public, internal, confidential, restricted]
+
+    - title: Publish
+      properties:
+        publishTarget:
+          title: Publish to
+          type: string
+          default: local
+          enum: [local, github]
+          enumNames:
+            - 'Local folder (offline demo, no repository is created)'
+            - 'GitHub repository + register in the catalog'
+      dependencies:
+        publishTarget:
+          oneOf:
+            - properties:
+                publishTarget:
+                  const: local
+            - required: [repoUrl]
+              properties:
+                publishTarget:
+                  const: github
+                repoUrl:
+                  title: Repository
+                  type: string
+                  ui:field: RepoUrlPicker
+                  ui:options:
+                    allowedHosts: [github.com]
+                triggerPipeline:
+                  title: Trigger the CI workflow after creation
+                  type: boolean
+                  default: true
+
+  steps:
+    - id: governance
+      name: FastFlow governance check
+      action: fastflow:governance:validate
+      input:
+        name: ${{ parameters.name }}
+        owner: ${{ parameters.owner }}
+        tier: ${{ parameters.tier }}
+        criticality: ${{ parameters.criticality }}
+        dataClassification: ${{ parameters.dataClassification }}
+
+    - id: fetch
+      name: Generate NestJS service
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          owner: ${{ steps.governance.output.owner }}
+          system: ${{ parameters.system }}
+          tier: ${{ parameters.tier }}
+          criticality: ${{ parameters.criticality }}
+          dataClassification: ${{ parameters.dataClassification }}
+          annotations: ${{ steps.governance.output.annotations }}
+          repoSlug: ${{ (parameters.repoUrl | parseRepoUrl).owner + '/' + (parameters.repoUrl | parseRepoUrl).repo if parameters.repoUrl else '' }}
+
+    # --- offline target -----------------------------------------------------
+    - id: publish-local
+      name: Publish to local folder
+      if: ${{ parameters.publishTarget != 'github' }}
+      action: fastflow:publish:local
+      input:
+        name: ${{ parameters.name }}
+
+    # --- GitHub target ------------------------------------------------------
+    - id: publish-github
+      name: Publish to GitHub
+      if: ${{ parameters.publishTarget == 'github' }}
+      action: publish:github
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        description: ${{ parameters.description }}
+        defaultBranch: main
+        repoVisibility: private
+
+    - id: register
+      name: Register in the catalog
+      if: ${{ parameters.publishTarget == 'github' }}
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish-github'].output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+
+    - id: pipeline
+      name: Trigger CI (skipped without a GitHub token)
+      if: ${{ parameters.publishTarget == 'github' and parameters.triggerPipeline }}
+      action: fastflow:github:dispatch-workflow
+      input:
+        repo: ${{ (parameters.repoUrl | parseRepoUrl).owner }}/${{ (parameters.repoUrl | parseRepoUrl).repo }}
+        workflowId: ci.yml
+        ref: main
+
+  output:
+    links:
+      - title: Repository
+        if: ${{ parameters.publishTarget == 'github' }}
+        url: ${{ steps['publish-github'].output.remoteUrl }}
+      - title: Open in catalog
+        if: ${{ parameters.publishTarget == 'github' }}
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
+    text:
+      - title: Governance
+        content: |
+          **${{ steps.governance.output.componentRef }}** passed the FastFlow governance check
+          (owner `${{ steps.governance.output.owner }}`, ${{ parameters.tier }}, criticality ${{ parameters.criticality }}, ${{ parameters.dataClassification }}).
+      - title: Generated files
+        if: ${{ parameters.publishTarget != 'github' }}
+        content: |
+          Offline mode: the project was written to `${{ steps['publish-local'].output.path }}` on the Backstage backend host.
+          In production this template publishes to GitHub and registers the component (catalog:register).
