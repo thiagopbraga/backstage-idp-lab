@@ -12,12 +12,12 @@ O laboratório é entregue em etapas, **um PR por etapa**:
 
 | Etapa | Entrega                                                                                                                                                                       | Status     |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1     | Backstage (novo backend system) + PostgreSQL via docker-compose, Dockerfile multi-stage, `app-config` com variáveis de ambiente, catálogo de exemplo com dois+ times, CI      | ✅ este PR |
-| 2     | Plugin backend customizado (SonarQube/GitHub API via `coreServices`, modo mock offline) + card de frontend na página da entidade                                              | ⏳ próximo |
-| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ⏳         |
+| 1     | Backstage (novo backend system) + PostgreSQL via docker-compose, Dockerfile multi-stage, `app-config` com variáveis de ambiente, catálogo de exemplo com dois+ times, CI      | ✅ PR #1   |
+| 2     | Plugin backend customizado (SonarQube/GitHub API via `coreServices`, modo mock offline) + card de frontend na página da entidade                                              | ✅ este PR |
+| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ⏳ próximo |
 | 4     | `PermissionPolicy` customizada com decisões condicionais por ownership (`isEntityOwner`) + mapeamento de claims OIDC (Entra ID / Keycloak)                                    | ⏳         |
 
-## Arquitetura (etapa 1)
+## Arquitetura
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,7 @@ flowchart LR
       perm[permission]
       search["search (engine pg)"]
       td[techdocs]
+      cq["code-quality<br/>(etapa 2)"]
     end
     be --> plugins
   end
@@ -51,6 +52,9 @@ flowchart LR
   search --> dbother
 
   yaml["examples/*.yaml<br/>catalog-info.yaml"] -->|locations type: file| cat
+  cq -->|"getEntityByRef (credenciais do usuário)"| cat
+  cq -->|"Web API (token ou mock)"| sonar[(SonarQube / SonarCloud)]
+  cq -->|"REST API (token ou mock)"| gh[(GitHub API)]
   env[".env / Secrets"] -.->|"${VAR} substitution"| be
 ```
 
@@ -78,7 +82,10 @@ Pontos de arquitetura que valem discutir em entrevista:
 ├── packages/
 │   ├── app/                 # frontend (new frontend system)
 │   └── backend/             # backend (createBackend) + teste do catálogo
-├── plugins/                 # plugins internos (etapas 2–4)
+├── plugins/
+│   ├── code-quality-backend/  # etapa 2: /api/code-quality (SonarQube + GitHub)
+│   ├── code-quality/          # etapa 2: card da entidade (new frontend system)
+│   └── code-quality-common/   # etapa 2: tipos e anotações compartilhados
 ├── examples/
 │   ├── org.yaml             # Groups e Users
 │   ├── entities.yaml        # Domains, Systems, Components, APIs, Resources
@@ -159,7 +166,54 @@ fastflow.io/data-classification: confidential # public | internal | confidential
 
 O teste `packages/backend/src/catalog.test.ts` roda no CI e falha se: alguma entidade não passar no schema do `@backstage/catalog-model`, algum `owner`/`memberOf` apontar para um Group inexistente, ou algum Component não tiver as anotações de governança. Em produção a lista de Users/Groups não é escrita à mão: vem de um Entity Provider do diretório corporativo (`catalog-backend-module-msgraph` para Entra ID, ou o provider do Keycloak).
 
-## Roteiro de demo (etapa 1)
+## Etapa 2 — plugin `code-quality` (SonarQube + GitHub)
+
+![Card Code quality & CI na página da claims-api](docs/images/code-quality-card.png)
+
+Três pacotes, seguindo o layout recomendado de plugins do Backstage:
+
+| Pacote                                            | Papel                                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `@internal/backstage-plugin-code-quality-backend` | `createBackendPlugin` em `/api/code-quality`. Endpoint `GET /report?entityRef=...` |
+| `@internal/backstage-plugin-code-quality`         | Plugin de frontend (new frontend system): `ApiBlueprint` + `EntityCardBlueprint`   |
+| `@internal/backstage-plugin-code-quality-common`  | Tipos do contrato (`CodeQualityReport`, `SectionResult<T>`) e helpers de anotação  |
+
+**Como funciona o backend**
+
+- Injeção de `coreServices.rootConfig`, `logger`, `cache`, `httpAuth`, `httpRouter` + `catalogServiceRef`.
+- `httpAuth.credentials(req, { allow: ['user', 'service'] })`: aceita usuários (frontend) e outros plugins (service-to-service); sem token → 401.
+- A entidade é lida do catálogo **com as credenciais de quem chamou** — se a permission policy (etapa 4) esconder a entidade do usuário, o relatório também some (404). Nada de "furar" a autorização usando o token do próprio plugin.
+- Anotações: `sonarqube.org/project-key` → `api/qualitygates/project_status` + `api/measures/component` (coverage, bugs, vulnerabilities, code_smells, security_hotspots, duplicated_lines_density). `github.com/project-slug` → `GET /repos/{slug}` + `GET /repos/{slug}/actions/runs`.
+- **Cache por provider** (`codeQuality.cacheTtlSeconds`, padrão 300s) via `coreServices.cache`: protege rate limit do GitHub e o SonarQube quando muitos usuários abrem a mesma página. Com várias réplicas em produção, o cache passa a ser compartilhado (Redis/Memcache) só mudando `backend.cache` no config, sem tocar no plugin.
+- **Falhas isoladas por seção** (`SectionResult<T>` = `ok | not-configured | error`): SonarQube fora do ar não esconde o GitHub, e a causa aparece no card (ex.: `SonarQube unreachable (ECONNREFUSED)`).
+- Segurança: slug validado (`owner/repo`) antes de montar a URL, project key com `encodeURIComponent`, timeout de 10s, tokens marcados `@visibility secret` no `config.d.ts` e nunca logados.
+- **Modo mock**: `codeQuality.mode: auto` (padrão) usa a API real só para o provider que tem token; sem token, dados determinísticos (mesmo projeto → mesmos números), marcados como `mock data` no card. `mock` força mock; `live` força as APIs (e falha no startup se faltar o token do SonarQube).
+- O token do GitHub é reaproveitado de `integrations.github` (um só segredo para rotacionar).
+
+**Como funciona o frontend**
+
+- `codeQualityApiRef = createApiRef<CodeQualityApi>().with({ id: 'plugin.code-quality.service' })` e `CodeQualityClient` usando `discoveryApi.getBaseUrl('code-quality')` + `fetchApi.fetch` (que injeta o token do usuário), registrado com `ApiBlueprint`.
+- `EntityCardBlueprint` (`entity-card:code-quality/overview`, `type: 'info'`) com `filter: isCodeQualityAvailable`: o card só aparece em entidades com as anotações (ex.: some em `broker-quote-widget`). Pode ser desligado por config: `app.extensions: [{ 'entity-card:code-quality/overview': false }]`.
+- UI só com `@backstage/core-components` (`InfoCard`, `Status*`, `Link`, `Progress`, `ResponseErrorPanel`) + primitivas MUI v4.
+
+**Configuração**
+
+```yaml
+codeQuality:
+  mode: ${CODE_QUALITY_MODE:-auto} # auto | mock | live
+  cacheTtlSeconds: 300
+  sonarqube:
+    baseUrl: ${SONARQUBE_BASE_URL:-https://sonarcloud.io}
+    token: ${SONARQUBE_TOKEN} # ausente = mock
+  github:
+    apiBaseUrl: https://api.github.com # token vem de integrations.github
+```
+
+Para dados reais, defina no `.env` (descomentando as linhas) `GITHUB_TOKEN` e/ou `SONARQUBE_BASE_URL` + `SONARQUBE_TOKEN` (permissão _Browse_ basta). O componente `backstage-idp-lab` aponta para este repositório, então com `GITHUB_TOKEN` o card mostra as execuções reais deste CI.
+
+**Testes** (Jest): clients com `fetch` mockado (mapeamento das respostas, headers de auth, 404/403, erro de rede, slug malicioso), service (cache, credenciais repassadas ao catálogo, isolamento de falhas), router (`supertest` + `mockServices.httpAuth`: 200/400/401/404, chamada service-to-service), integração com `startTestBackend` (mock offline e SonarQube "live" com `fetch` interceptado) e o card com `renderInTestApp` + `TestApiProvider`.
+
+## Roteiro de demo
 
 1. `docker compose up --build` e mostrar o `HEALTHCHECK` ficando `healthy` (`docker compose ps`).
 2. Entrar como Guest → o token representa `user:default/ana.souza` com ownership de `group:default/claims-squad`. Para mostrar o que vai no token:
@@ -180,9 +234,18 @@ O teste `packages/backend/src/catalog.test.ts` roda no CI e falha se: alguma ent
    Discussão: `refresh_state` (fila de processamento/reconciliação), `stitch_queue` + `final_entities` (stitching), `relations`, `search` (índice usado pelos filtros).
 6. Reiniciar como `bruno.lima` (`BACKSTAGE_GUEST_USER`) e mostrar que o ownership no token muda — base para a `PermissionPolicy` da etapa 4.
 
-## Próximos passos (fora desta etapa)
+7. **Etapa 2 — card de qualidade**: na `claims-api`, mostrar o card _Code quality & CI_ (quality gate, cobertura, vulnerabilidades, últimas execuções do GitHub Actions, selo `mock data`). Abrir `broker-quote-widget` e mostrar que o card não aparece (sem anotações). Depois, a API direto:
+   ```bash
+   TOKEN=$(curl -s -H 'X-Requested-With: XMLHttpRequest' http://localhost:7007/api/auth/guest/refresh | jq -r .backstageIdentity.token)
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     'http://localhost:7007/api/code-quality/report?entityRef=component:default/claims-api' | jq
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     'http://localhost:7007/api/code-quality/report?entityRef=component:default/claims-api'   # 401 sem token
+   ```
+   Pontos para discutir: credenciais do usuário repassadas ao catálogo, cache e rate limit, isolamento de falhas, por que um plugin próprio em vez de só o proxy (agregação, normalização, cache e autorização no servidor).
 
-- **Etapa 2**: plugin `code-quality` (backend + card no `EntityPage`) consultando SonarQube Web API e GitHub API, com cache e modo mock offline.
+## Próximos passos
+
 - **Etapa 3**: action `fastflow:governance:validate` + template NestJS (golden path) com `fetch:template` e `catalog:register`, opcionalmente disparando `workflow_dispatch` no GitHub Actions.
 - **Etapa 4**: `PermissionPolicy` via `policyExtensionPoint` com `createCatalogConditionalDecision`/`isEntityOwner`, e sign-in OIDC (Entra ID / Keycloak) mapeando claims de grupos para o catálogo.
 - Depois: TechDocs com publisher S3 e build no CI, plugins ArgoCD/SonarQube, OpenTelemetry, deploy em Kubernetes/OpenShift (probes, HPA, réplicas stateless) e métricas DORA/adoção.
