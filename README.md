@@ -8,14 +8,14 @@ O objetivo é mostrar, de ponta a ponta, o que um(a) Platform Engineer sênior f
 
 ## Status e roadmap
 
-O laboratório é entregue em etapas, **um PR por etapa**:
+O laboratório foi entregue em etapas, **um PR por etapa** — as quatro estão concluídas:
 
 | Etapa | Entrega                                                                                                                                                                       | Status     |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | 1     | Backstage (novo backend system) + PostgreSQL via docker-compose, Dockerfile multi-stage, `app-config` com variáveis de ambiente, catálogo de exemplo com dois+ times, CI      | ✅ PR #1   |
 | 2     | Plugin backend customizado (SonarQube/GitHub API via `coreServices`, modo mock offline) + card de frontend na página da entidade                                              | ✅ PR #2   |
-| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ✅ este PR |
-| 4     | `PermissionPolicy` customizada com decisões condicionais por ownership (`isEntityOwner`) + mapeamento de claims OIDC (Entra ID / Keycloak)                                    | ⏳ próximo |
+| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ✅ PR #3   |
+| 4     | `PermissionPolicy` customizada com decisões condicionais por ownership (`isEntityOwner`) + mapeamento de claims OIDC (Entra ID / Keycloak)                                    | ✅ este PR |
 
 ## Arquitetura
 
@@ -33,11 +33,16 @@ flowchart LR
       ffmod["scaffolder-backend-module-fastflow<br/>(etapa 3)"]
       auth["auth + guest provider<br/>(somente demo)"]
       perm[permission]
+      pol["permission-backend-module-fastflow-policy<br/>FastFlowPermissionPolicy (etapa 4)"]
       search["search (engine pg)"]
       td[techdocs]
       cq["code-quality<br/>(etapa 2)"]
     end
     be --> plugins
+    pol -->|"policyExtensionPoint"| perm
+    cat -.->|"authorize: delete/refresh"| perm
+    scaf -.->|"authorize: task/action"| perm
+    perm -.->|"CONDITIONAL → isEntityOwner / isTaskOwner<br/>avaliado pelo plugin dono do recurso"| cat
     ffmod -->|"scaffolderActionsExtensionPoint<br/>fastflow:governance:validate<br/>fastflow:publish:local<br/>fastflow:github:dispatch-workflow"| scaf
   end
 
@@ -69,7 +74,7 @@ Pontos de arquitetura que valem discutir em entrevista:
 - **Novo backend system**: `packages/backend/src/index.ts` só compõe features com `backend.add(import(...))`. Cada plugin recebe dependências por injeção (`coreServices.database`, `logger`, `httpRouter`, `auth`...), sem wiring manual — é o que permite adicionar módulos (`createBackendModule`) nas próximas etapas sem tocar nos plugins.
 - **Novo frontend system**: `packages/app/src/App.tsx` usa `createApp` de `@backstage/frontend-defaults` com features/extensions; `app.packages: all` descobre os plugins pelas dependências do pacote `app`.
 - **PostgreSQL em todos os ambientes** (inclusive dev): o comportamento do catálogo (fila do `refresh_state`, stitching, locks) é o mesmo da produção. Cada plugin ganha seu próprio database lógico `backstage_plugin_<pluginId>`, criado automaticamente — por isso o usuário precisa de `CREATEDB` (ou use `pluginDivisionMode: schema` quando o DBA não concede isso).
-- **Identidade = catálogo**: o guest provider faz `signInWithCatalogUser`, então o token já sai com `ownershipEntityRefs` (usuário + grupos de `memberOf`). É exatamente o contrato que o OIDC corporativo vai cumprir na etapa 4.
+- **Identidade = catálogo**: o guest provider faz `signInWithCatalogUser`, então o token já sai com `ownershipEntityRefs` (usuário + grupos de `memberOf`). É exatamente o contrato que o OIDC corporativo cumpre em produção (ver [docs/identity-and-sso.md](docs/identity-and-sso.md)) e o insumo da `PermissionPolicy` da etapa 4.
 
 ## Stack
 
@@ -92,23 +97,32 @@ Pontos de arquitetura que valem discutir em entrevista:
 │   ├── code-quality-backend/  # etapa 2: /api/code-quality (SonarQube + GitHub)
 │   ├── code-quality/          # etapa 2: card da entidade (new frontend system)
 │   ├── code-quality-common/   # etapa 2: tipos e anotações compartilhados
-│   └── scaffolder-backend-module-fastflow/  # etapa 3: actions de governança do golden path
+│   ├── scaffolder-backend-module-fastflow/  # etapa 3: actions de governança do golden path
+│   │   └── src/
+│   │       ├── governance/rules.ts          # regras puras (nome, tier, criticidade, dados)
+│   │       ├── actions/                     # validate, publish:local, dispatch-workflow
+│   │       └── module.ts                    # createBackendModule (scaffolder)
+│   └── permission-backend-module-fastflow-policy/  # etapa 4: PermissionPolicy por ownership
 │       └── src/
-│           ├── governance/rules.ts          # regras puras (nome, tier, criticidade, dados)
-│           ├── actions/                     # validate, publish:local, dispatch-workflow
-│           └── module.ts                    # createBackendModule (scaffolder)
+│           ├── policy/FastFlowPermissionPolicy.ts  # ALLOW / DENY / CONDITIONAL
+│           └── module.ts                           # createBackendModule (permission)
 ├── examples/
 │   ├── org.yaml             # Groups e Users
 │   ├── entities.yaml        # Domains, Systems, Components, APIs, Resources
 │   └── templates/
 │       └── nestjs-service/  # etapa 3: golden path NestJS (template.yaml + skeleton/ Nunjucks)
+├── docs/
+│   ├── identity-and-sso.md  # etapa 4: guest hoje, Entra ID / Keycloak em produção
+│   └── images/              # screenshots do README
 ├── catalog-info.yaml        # o próprio portal no catálogo
 ├── app-config.yaml          # base (dev) com ${VAR:-default}
 ├── app-config.production.yaml  # overlay de produção (somente env vars)
 ├── app-config.docker.yaml   # overlay da demo local (habilita guest no container)
 ├── Dockerfile               # build multi-stage
 ├── docker-compose.yml       # Postgres + Backstage
-├── scripts/smoke-scaffolder.sh  # etapa 3: execução rejeitada + execução válida via API
+├── scripts/
+│   ├── smoke-scaffolder.sh  # etapa 3: execução rejeitada + execução válida via API
+│   └── smoke-permissions.sh # etapa 4: allow/deny com ana.souza, bruno.lima e thiago.braga
 └── .github/workflows/ci.yml # CI
 ```
 
@@ -158,7 +172,7 @@ yarn build:all       # build de todos os pacotes
 
 - `app-config.yaml` usa substituição com fallback (`${POSTGRES_HOST:-localhost}`), então o mesmo arquivo funciona no laptop e no container.
 - `app-config.production.yaml` contém **apenas** referências a variáveis de ambiente; em Kubernetes/OpenShift elas vêm de `Secret`/`ConfigMap` (idealmente sincronizados de AWS Secrets Manager ou Vault via External Secrets). TLS do Postgres via `PGSSLMODE`/CA montada está documentado no arquivo.
-- `app-config.docker.yaml` é **somente para a demo**: habilita `dangerouslyAllowOutsideDevelopment` do guest provider. Em produção o sign-in é OIDC (etapa 4).
+- `app-config.docker.yaml` é **somente para a demo**: habilita `dangerouslyAllowOutsideDevelopment` do guest provider. Em produção o sign-in é OIDC — Entra ID ou Keycloak, ver [docs/identity-and-sso.md](docs/identity-and-sso.md).
 - `.env` é ignorado pelo Git; `.env.example` não tem segredos reais.
 
 ## Catálogo de exemplo
@@ -195,7 +209,7 @@ Três pacotes, seguindo o layout recomendado de plugins do Backstage:
 
 - Injeção de `coreServices.rootConfig`, `logger`, `cache`, `httpAuth`, `httpRouter` + `catalogServiceRef`.
 - `httpAuth.credentials(req, { allow: ['user', 'service'] })`: aceita usuários (frontend) e outros plugins (service-to-service); sem token → 401.
-- A entidade é lida do catálogo **com as credenciais de quem chamou** — se a permission policy (etapa 4) esconder a entidade do usuário, o relatório também some (404). Nada de "furar" a autorização usando o token do próprio plugin.
+- A entidade é lida do catálogo **com as credenciais de quem chamou** — se uma permission policy esconder a entidade do usuário (a da etapa 4 mantém leitura aberta), o relatório também some (404). Nada de "furar" a autorização usando o token do próprio plugin.
 - Anotações: `sonarqube.org/project-key` → `api/qualitygates/project_status` + `api/measures/component` (coverage, bugs, vulnerabilities, code_smells, security_hotspots, duplicated_lines_density). `github.com/project-slug` → `GET /repos/{slug}` + `GET /repos/{slug}/actions/runs`.
 - **Cache por provider** (`codeQuality.cacheTtlSeconds`, padrão 300s) via `coreServices.cache`: protege rate limit do GitHub e o SonarQube quando muitos usuários abrem a mesma página. Com várias réplicas em produção, o cache passa a ser compartilhado (Redis/Memcache) só mudando `backend.cache` no config, sem tocar no plugin.
 - **Falhas isoladas por seção** (`SectionResult<T>` = `ok | not-configured | error`): SonarQube fora do ar não esconde o GitHub, e a causa aparece no card (ex.: `SonarQube unreachable (ECONNREFUSED)`).
@@ -232,6 +246,8 @@ Para dados reais, defina no `.env` (descomentando as linhas) `GITHUB_TOKEN` e/ou
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | ![Task falhando na FastFlow governance check](docs/images/scaffolder-rejected-run.png) | ![Task concluída publicando na pasta local](docs/images/scaffolder-successful-run.png) |
 
+> Captura feita na etapa 3, antes da `PermissionPolicy`. Desde a etapa 4, um owner que não é grupo do usuário (como `ghost-team` para a ana) é barrado antes, pela policy; a verificação "owner existe no catálogo" continua valendo para platform admins e para quem chama a action fora deste template.
+
 O pacote `@internal/backstage-plugin-scaffolder-backend-module-fastflow` é um **módulo** do plugin `scaffolder` (`createBackendModule({ pluginId: 'scaffolder', moduleId: 'fastflow' })`) que registra três actions via `scaffolderActionsExtensionPoint` — sem fork nem patch do scaffolder. Ele é adicionado em `packages/backend/src/index.ts` com `backend.add(import(...))`.
 
 | Action                              | O que faz                                                                                                                                                                                                                 |
@@ -261,6 +277,58 @@ Decisões de design que valem discutir:
 
 **CI**: além dos testes, o job `docker` roda `scripts/smoke-scaffolder.sh` contra o container: uma execução inválida tem que terminar `failed` com a mensagem da governança, e uma válida tem que terminar `completed`.
 
+## Etapa 4 — `PermissionPolicy` por ownership
+
+| `ana.souza` (claims-squad) em `claims-api`: botão de refresh e _Unregister_ habilitados | `ana.souza` em `policy-quote-service` (policy-squad): sem refresh, _Unregister_ desabilitado |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| ![Owner: ações liberadas](docs/images/permission-entity-owner.png)                      | ![Não-owner: ações bloqueadas](docs/images/permission-entity-non-owner.png)                  |
+
+![ana.souza tentando criar um serviço para o policy-squad: Unauthorized action](docs/images/permission-scaffolder-denied.png)
+
+O pacote `@internal/backstage-plugin-permission-backend-module-fastflow-policy` é um módulo do plugin `permission` (`createBackendModule({ pluginId: 'permission', moduleId: 'fastflow-policy' })`) que instala a `FastFlowPermissionPolicy` via `policyExtensionPoint.setPolicy(...)`. Ele substitui o `permission-backend-module-allow-all-policy` em `packages/backend/src/index.ts`.
+
+**Regras** (nomes de permissão reais do Backstage 1.56):
+
+| Permissão                                                                                                  | Decisão                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `catalog.entity.read`, `catalog.location.read`, template parameter/step read, permissões de outros plugins | **ALLOW** — times navegam pelos serviços uns dos outros (o catálogo é um mapa da empresa)                                                                                                             |
+| `catalog.entity.delete`, `catalog.entity.refresh`                                                          | **CONDITIONAL** `createCatalogConditionalDecision` + `isEntityOwner({ claims: ownershipEntityRefs })`                                                                                                 |
+| `catalog.location.delete`, `catalog.ingestion.manage`                                                      | **DENY** (exceto platform admin) — não têm escopo de entidade: remover uma location apaga entidades de outros times                                                                                   |
+| `catalog.entity.create`, `catalog.location.create`                                                         | **ALLOW** para quem pertence a algum Group, **DENY** caso contrário                                                                                                                                   |
+| `scaffolder.task.create`, `scaffolder.template.dry-run`                                                    | **ALLOW** para membros de time, **DENY** caso contrário                                                                                                                                               |
+| `scaffolder.action.execute`                                                                                | **CONDITIONAL** `createScaffolderActionConditionalDecision`: `fastflow:governance:validate` só roda se o input `owner` for um grupo do usuário (`hasStringProperty`); as demais actions seguem livres |
+| `scaffolder.task.read`, `scaffolder.task.cancel`                                                           | **CONDITIONAL** `isTaskOwner({ createdBy: [userEntityRef] })` — cada um vê/cancela só as próprias tasks                                                                                               |
+| `scaffolder.template.management`                                                                           | **DENY** (exceto platform admin)                                                                                                                                                                      |
+| _sem usuário_ (principal `none`)                                                                           | **DENY**                                                                                                                                                                                              |
+| qualquer permissão, membro de `group:default/fastflow`                                                     | **ALLOW** — regra de _platform admin / break-glass_ (configurável)                                                                                                                                    |
+
+Por que decisões **condicionais** e não `if (entity.spec.owner === ...)` na policy:
+
+- A policy não recebe a entidade — recebe só a permissão e o usuário. Ela devolve um critério (`IS_ENTITY_OWNER` com os refs do token) e quem avalia é o **plugin dono do recurso**, contra a relação `ownedBy` já resolvida no catálogo. Funciona para checagens unitárias (`POST /refresh`, `DELETE /entities/by-uid`) e também vira filtro SQL em listagens.
+- O mesmo critério é usado pelo frontend: `/api/permission/authorize` com `resourceRef` resolve o condicional no catálogo e devolve ALLOW/DENY — é por isso que o botão de refresh some e o _Unregister entity_ fica desabilitado nas entidades de outros times, sem nenhum código de UI.
+- Ownership vem do grafo (`memberOf`), não de listas na policy: um time novo no diretório já ganha permissões sem deploy.
+- A identidade é lida de `coreServices.userInfo` (`userEntityRef` + `ownershipEntityRefs`), não do campo `user.info` que está deprecado.
+
+Decisões de design que valem discutir:
+
+- **Leitura aberta por padrão** e default-ALLOW para permissões desconhecidas, para não quebrar plugins (search, techdocs, kubernetes...). O próximo passo natural em produção é inverter para default-DENY quando todo plugin em uso tiver regra explícita.
+- **Owner-scoped actions**: a policy restringe a action pelo **input** (`owner`), não pelo template — qualquer template que use `fastflow:governance:validate` herda a regra. Formas aceitas: `group:default/claims-squad` ou `claims-squad`; qualquer outra coisa (inclusive owner ausente) é negada (fail closed).
+- **Platform admin** em config (`fastflow.permission.platformAdminGroups`) — break-glass auditável: as ações continuam gerando eventos de auditoria (`catalog.entity-mutate` com `actorId`).
+- `isTaskOwner` deixa os logs de scaffolding privados (podem conter nomes de repos e parâmetros), mas o platform admin enxerga tudo para suporte.
+
+```yaml
+fastflow:
+  permission:
+    platformAdminGroups: ['group:default/fastflow']
+    ownerScopedActions: ['fastflow:governance:validate']
+```
+
+**Identidade e SSO**: hoje o guest provider faz `signInWithCatalogUser` (o token já sai com `ownershipEntityRefs`); em produção, o mesmo contrato vem do Microsoft Entra ID (provider `microsoft` + ingestão `msgraph`) ou do Red Hat Build of Keycloak (provider `oidc` + ingestão `keycloakOrg`). A recomendação, os resolvers e o mapeamento de claims (`groups`, `roles`, `realm_access.roles`, overage do Entra) estão em [docs/identity-and-sso.md](docs/identity-and-sso.md).
+
+**Testes** (Jest, 30 casos): leitura liberada para qualquer usuário logado; delete/refresh devolvem `CONDITIONAL` com `IS_ENTITY_OWNER`, e o critério, avaliado com as regras reais do catálogo (`permissionRules.isEntityOwner`), casa com a entidade do próprio time e não com a do outro; location delete negado; scaffolder (task create, action condicional por `owner` — completo, nome curto, outro time, owner ausente, outras actions —, `isTaskOwner`, template management); platform admin (incluindo grupos vindos das options); sem usuário e usuário fora do diretório.
+
+**CI**: o job `docker` sobe o container como `ana.souza`, recria como `bruno.lima` e depois como `thiago.braga` (as chaves de assinatura ficam no Postgres, então os tokens anteriores continuam válidos) e roda `scripts/smoke-permissions.sh`: leituras 200, refresh 200/403 cruzado entre os times, decisão de delete ALLOW/DENY, `DELETE` 403, scaffold negado/permitido, task alheia 403 e o break-glass do platform admin.
+
 ## Roteiro de demo
 
 1. `docker compose up --build` e mostrar o `HEALTHCHECK` ficando `healthy` (`docker compose ps`).
@@ -280,7 +348,7 @@ Decisões de design que valem discutir:
    select source_entity_ref, type, target_entity_ref from relations where source_entity_ref = 'component:default/claims-api';
    ```
    Discussão: `refresh_state` (fila de processamento/reconciliação), `stitch_queue` + `final_entities` (stitching), `relations`, `search` (índice usado pelos filtros).
-6. Reiniciar como `bruno.lima` (`BACKSTAGE_GUEST_USER`) e mostrar que o ownership no token muda — base para a `PermissionPolicy` da etapa 4.
+6. Reiniciar como `bruno.lima` (`BACKSTAGE_GUEST_USER`) e mostrar que o ownership no token muda — é o insumo da `PermissionPolicy` (passo 9).
 
 7. **Etapa 2 — card de qualidade**: na `claims-api`, mostrar o card _Code quality & CI_ (quality gate, cobertura, vulnerabilidades, últimas execuções do GitHub Actions, selo `mock data`). Abrir `broker-quote-widget` e mostrar que o card não aparece (sem anotações). Depois, a API direto:
 
@@ -295,7 +363,8 @@ Decisões de design que valem discutir:
    Pontos para discutir: credenciais do usuário repassadas ao catálogo, cache e rate limit, isolamento de falhas, por que um plugin próprio em vez de só o proxy (agregação, normalização, cache e autorização no servidor).
 
 8. **Etapa 3 — golden path com governança**: em _Create_, escolher **NestJS service (FastFlow golden path)**.
-   - **(a) Execução rejeitada**: nome `ClaimsIntake`, owner digitado `ghost-team`, `Tier 1`, criticidade `low`. Ao criar, a task falha já no primeiro passo com as 4 violações de uma vez (kebab-case, sufixo, `tier-1` → `high`, owner inexistente) e nenhum arquivo é gerado (os demais passos aparecem como _skipped_).
+
+   - **(a) Execução rejeitada**: nome `ClaimsIntake`, owner `claims-squad`, `Tier 1`, criticidade `low`. Ao criar, a task falha já no primeiro passo com as violações de uma vez (kebab-case, sufixo, `tier-1` → `high`) e nenhum arquivo é gerado (os demais passos aparecem como _skipped_). Para ver também "owner inexistente" (`ghost-team`), rode como `thiago.braga` (platform admin); como `ana.souza`, esse owner é barrado antes pela policy (passo 9).
    - **(b) Execução válida**: _Start over_, nome `claims-quote-api`, owner `claims-squad` (pelo picker), `Tier 2`, `high`, `confidential`, publicação `local`. A task conclui e mostra onde o projeto foi escrito (`/tmp/fastflow-golden-paths/claims-quote-api-<taskId>` dentro do container).
    - O mesmo pela API (é o que o CI faz):
      ```bash
@@ -304,13 +373,38 @@ Decisões de design que valem discutir:
      # ou uma task avulsa:
      curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
        -X POST http://localhost:7007/api/scaffolder/v2/tasks \
-       -d '{"templateRef":"template:default/fastflow-nestjs-service","values":{"name":"claims-api","description":"dup","owner":"user:default/ana.souza","tier":"tier-3","criticality":"low","dataClassification":"restricted","publishTarget":"local"}}'
-     # -> falha com: dados restricted não podem ser tier-3, owner precisa ser Group, nome claims-api já existe
+       -d '{"templateRef":"template:default/fastflow-nestjs-service","values":{"name":"claims-api","description":"dup","owner":"group:default/claims-squad","tier":"tier-3","criticality":"low","dataClassification":"restricted","publishTarget":"local"}}'
+     # -> falha com: dados restricted não podem ser tier-3, nome claims-api já existe
      ```
    - Conferir o projeto gerado: `docker compose exec backstage ls /tmp/fastflow-golden-paths` e `cat .../catalog-info.yaml` (anotações `fastflow.io/*` preenchidas).
-   - Pontos para discutir: por que validar no servidor, `createBackendModule` + extension point vs. fork, credenciais do iniciador, degradação graciosa sem token, e como a etapa 4 complementa isso (permissão `scaffolder.template.parameter.read`/`scaffolder.action.execute` por time).
+   - Pontos para discutir: por que validar no servidor, `createBackendModule` + extension point vs. fork, credenciais do iniciador, degradação graciosa sem token, e como a etapa 4 complementa isso (`scaffolder.action.execute` condicional ao `owner`).
+
+9. **Etapa 4 — permissões por ownership** (trocar de usuário, ver DENY e depois ALLOW):
+   - Como `ana.souza` (padrão), abrir `policy-quote-service` (policy-squad): o card _About_ não mostra o botão de refresh e, no menu ⋮, _Unregister entity_ fica desabilitado. Abrir `claims-api`: refresh aparece e _Unregister entity_ abre o diálogo de _Delete Entity_ (confirmar funciona; como a location é de arquivo, a entidade volta no próximo ciclo de ingestão).
+   - Em _Create_, rodar o golden path com owner `policy-squad` → a task falha com `Unauthorized action: fastflow:governance:validate`; com owner `claims-squad` → conclui.
+   - Pela API, o mesmo que a UI consulta:
+     ```bash
+     ANA_TOKEN=$(curl -s -H 'X-Requested-With: XMLHttpRequest' http://localhost:7007/api/auth/guest/refresh | jq -r .backstageIdentity.token)
+     curl -s -H "Authorization: Bearer $ANA_TOKEN" -H 'Content-Type: application/json' \
+       -X POST http://localhost:7007/api/permission/authorize \
+       -d '{"items":[
+         {"id":"1","permission":{"type":"resource","name":"catalog.entity.delete","attributes":{"action":"delete"},"resourceType":"catalog-entity"},"resourceRef":"component:default/claims-api"},
+         {"id":"2","permission":{"type":"resource","name":"catalog.entity.delete","attributes":{"action":"delete"},"resourceType":"catalog-entity"},"resourceRef":"component:default/policy-quote-service"}]}' | jq -c .items
+     # [{"id":"1","result":"ALLOW"},{"id":"2","result":"DENY"}]
+     curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $ANA_TOKEN" -H 'Content-Type: application/json' \
+       -X POST http://localhost:7007/api/catalog/refresh -d '{"entityRef":"component:default/policy-quote-service"}'   # 403
+     ```
+   - Trocar para `bruno.lima` e repetir — os resultados se invertem. Depois `thiago.braga` (platform admin): tudo liberado.
+     ```bash
+     BACKSTAGE_GUEST_USER=user:default/bruno.lima docker compose up -d
+     BRUNO_TOKEN=$(curl -s -H 'X-Requested-With: XMLHttpRequest' http://localhost:7007/api/auth/guest/refresh | jq -r .backstageIdentity.token)
+     ANA_TOKEN=$ANA_TOKEN BRUNO_TOKEN=$BRUNO_TOKEN scripts/smoke-permissions.sh   # roteiro completo, o mesmo do CI
+     ```
+   - Pontos para discutir: ALLOW/DENY/CONDITIONAL e quem avalia o condicional, por que leitura aberta, `catalog.location.delete` sem escopo de entidade, break-glass, e como Entra ID/Keycloak alimentam `ownershipEntityRefs` ([docs/identity-and-sso.md](docs/identity-and-sso.md)).
 
 ## Próximos passos
 
-- **Etapa 4**: `PermissionPolicy` via `policyExtensionPoint` com `createCatalogConditionalDecision`/`isEntityOwner`, e sign-in OIDC (Entra ID / Keycloak) mapeando claims de grupos para o catálogo.
-- Depois: TechDocs com publisher S3 e build no CI, plugins ArgoCD/SonarQube, OpenTelemetry, deploy em Kubernetes/OpenShift (probes, HPA, réplicas stateless) e métricas DORA/adoção.
+O plano original do laboratório (4 etapas) está concluído. Evoluções naturais, fora do escopo:
+
+- Sign-in real com Entra ID ou Keycloak (o desenho está em [docs/identity-and-sso.md](docs/identity-and-sso.md)) e policy default-DENY.
+- TechDocs com publisher S3 e build no CI, plugins ArgoCD/SonarQube, OpenTelemetry, deploy em Kubernetes/OpenShift (probes, HPA, réplicas stateless) e métricas DORA/adoção.

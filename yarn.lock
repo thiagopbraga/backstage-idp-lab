@@ -2753,7 +2753,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-catalog-backend@npm:^4.0.1":
+"@backstage/plugin-catalog-backend@npm:^4.0.1, @backstage/plugin-catalog-backend@npm:^4.0.2":
   version: 4.0.2
   resolution: "@backstage/plugin-catalog-backend@npm:4.0.2"
   dependencies:
@@ -3330,18 +3330,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/042b5ad5cc248689caa3af0762bf8439e8592cb412d125d494d228ca4a6ee8e3777cc4eaadcb88925528beb72eee871db1e82a60d99ccb10c6b2c6aa0b8fd16c
-  languageName: node
-  linkType: hard
-
-"@backstage/plugin-permission-backend-module-allow-all-policy@npm:^0.2.24":
-  version: 0.2.24
-  resolution: "@backstage/plugin-permission-backend-module-allow-all-policy@npm:0.2.24"
-  dependencies:
-    "@backstage/backend-plugin-api": "npm:^1.11.0"
-    "@backstage/plugin-auth-node": "npm:^0.7.7"
-    "@backstage/plugin-permission-common": "npm:^0.9.12"
-    "@backstage/plugin-permission-node": "npm:^0.11.5"
-  checksum: 10c0/d43365fc03fbcde7bfe06cb27aa789318b5e73a62caeb059b420d846f34561fefe59f9b29e141603c9c09cdcd23456c2ed35f0d1124c91955bbb5ed65ab290f6
   languageName: node
   linkType: hard
 
@@ -5463,6 +5451,25 @@ __metadata:
     react-use: "npm:^17.2.4"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
+"@internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:^, @internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:plugins/permission-backend-module-fastflow-policy":
+  version: 0.0.0-use.local
+  resolution: "@internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:plugins/permission-backend-module-fastflow-policy"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.11.0"
+    "@backstage/backend-test-utils": "npm:^1.11.8"
+    "@backstage/catalog-model": "npm:^1.10.2"
+    "@backstage/cli": "npm:^0.36.7"
+    "@backstage/config": "npm:^1.3.10"
+    "@backstage/plugin-catalog-backend": "npm:^4.0.2"
+    "@backstage/plugin-catalog-common": "npm:^1.2.1"
+    "@backstage/plugin-permission-backend": "npm:^0.7.17"
+    "@backstage/plugin-permission-common": "npm:^0.9.12"
+    "@backstage/plugin-permission-node": "npm:^0.11.5"
+    "@backstage/plugin-scaffolder-backend": "npm:^4.2.1"
+    "@backstage/plugin-scaffolder-common": "npm:^2.3.1"
   languageName: unknown
   linkType: soft
 
@@ -13641,7 +13648,6 @@ __metadata:
     "@backstage/plugin-mcp-actions-backend": "npm:^0.2.3"
     "@backstage/plugin-notifications-backend": "npm:^0.6.10"
     "@backstage/plugin-permission-backend": "npm:^0.7.17"
-    "@backstage/plugin-permission-backend-module-allow-all-policy": "npm:^0.2.24"
     "@backstage/plugin-permission-common": "npm:^0.9.12"
     "@backstage/plugin-permission-node": "npm:^0.11.5"
     "@backstage/plugin-proxy-backend": "npm:^0.6.19"
@@ -13657,6 +13663,7 @@ __metadata:
     "@backstage/plugin-techdocs-backend": "npm:^2.4.0"
     "@backstage/plugin-user-settings-backend": "npm:^0.4.8"
     "@internal/backstage-plugin-code-quality-backend": "workspace:^"
+    "@internal/backstage-plugin-permission-backend-module-fastflow-policy": "workspace:^"
     "@internal/backstage-plugin-scaffolder-backend-module-fastflow": "workspace:^"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"

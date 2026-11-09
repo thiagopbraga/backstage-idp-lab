@@ -244,6 +244,12 @@ fastflow:
   scaffolder:
     # Where fastflow:publish:local writes generated projects (offline demo)
     localOutputDir: ${FASTFLOW_LOCAL_OUTPUT_DIR:-/tmp/fastflow-golden-paths}
+  # Stage 4 - ownership-based permission policy (plugins/permission-backend-module-fastflow-policy)
+  permission:
+    # Break-glass / platform admin: members bypass the ownership rules
+    platformAdminGroups: ['group:default/fastflow']
+    # Actions that only run when their `owner` input is one of the initiator's groups
+    ownerScopedActions: ['fastflow:governance:validate']
 
 # Stage 2 - code-quality plugin (plugins/code-quality-backend).
 # Without tokens every section is served from deterministic mock data, so the
@@ -263,7 +269,7 @@ kubernetes:
 
 # see https://backstage.io/docs/permissions/getting-started for more on the permission framework
 permission:
-  # setting this to `false` will disable permissions
+  # setting this to `false` will disable permissions (and the FastFlow policy)
   enabled: true
 
 # see https://backstage.io/docs/ai/mcp-actions for more details
