@@ -1,50 +1,45 @@
 import { HttpAuthService } from '@backstage/backend-plugin-api';
+import { parseEntityRef, stringifyEntityRef } from '@backstage/catalog-model';
 import { InputError } from '@backstage/errors';
-import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
-import { todoListServiceRef } from './services/TodoListService';
+import { z } from 'zod/v3';
+import { CodeQualityService } from './service/CodeQualityService';
 
-export async function createRouter({
-  httpAuth,
-  todoList,
-}: {
+const reportQuery = z.object({
+  entityRef: z.string().min(1, 'entityRef is required'),
+});
+
+export async function createRouter(options: {
   httpAuth: HttpAuthService;
-  todoList: typeof todoListServiceRef.T;
+  service: Pick<CodeQualityService, 'getReport'>;
 }): Promise<express.Router> {
+  const { httpAuth, service } = options;
   const router = Router();
-  router.use(express.json());
 
-  // TEMPLATE NOTE:
-  // Zod is a powerful library for data validation and recommended in particular
-  // for user-defined schemas. In this case we use it for input validation too.
-  //
-  // If you want to define a schema for your API we recommend using Backstage's
-  // OpenAPI tooling: https://backstage.io/docs/next/openapi/01-getting-started
-  const todoSchema = z.object({
-    title: z.string(),
-    entityRef: z.string().optional(),
-  });
-
-  router.post('/todos', async (req, res) => {
-    const parsed = todoSchema.safeParse(req.body);
+  /**
+   * GET /report?entityRef=component:default/claims-api
+   * Users (frontend) and other backend plugins (service tokens) may call it.
+   */
+  router.get('/report', async (req, res) => {
+    const parsed = reportQuery.safeParse(req.query);
     if (!parsed.success) {
-      throw new InputError(parsed.error.toString());
+      throw new InputError(parsed.error.issues.map(i => i.message).join('; '));
     }
 
-    const result = await todoList.createTodo(parsed.data, {
-      credentials: await httpAuth.credentials(req, { allow: ['user'] }),
+    let entityRef: string;
+    try {
+      entityRef = stringifyEntityRef(
+        parseEntityRef(parsed.data.entityRef, { defaultKind: 'component' }),
+      );
+    } catch (error) {
+      throw new InputError(`Invalid entityRef "${parsed.data.entityRef}"`);
+    }
+
+    const credentials = await httpAuth.credentials(req, {
+      allow: ['user', 'service'],
     });
-
-    res.status(201).json(result);
-  });
-
-  router.get('/todos', async (_req, res) => {
-    res.json(await todoList.listTodos());
-  });
-
-  router.get('/todos/:id', async (req, res) => {
-    res.json(await todoList.getTodo({ id: req.params.id }));
+    res.json(await service.getReport(entityRef, credentials));
   });
 
   return router;

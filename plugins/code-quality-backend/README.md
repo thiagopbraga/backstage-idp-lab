@@ -1,28 +1,29 @@
-# code-quality
+# @internal/backstage-plugin-code-quality-backend
 
-This plugin backend was templated using the Backstage CLI. You should replace this text with a description of your plugin backend.
+Backend plugin (new backend system) mounted at `/api/code-quality`. It reads the
+`sonarqube.org/project-key` and `github.com/project-slug` annotations of a catalog
+entity and returns a combined report from the **SonarQube Web API** (quality gate,
+coverage, bugs, vulnerabilities, code smells, hotspots, duplication) and the
+**GitHub REST API** (repository metadata + latest Actions runs).
 
-## Installation
-
-This plugin is installed via the `@internal/backstage-plugin-code-quality-backend` package. To install it to your backend package, run the following command:
-
-```bash
-# From your root directory
-yarn --cwd packages/backend add @internal/backstage-plugin-code-quality-backend
+```
+GET /api/code-quality/report?entityRef=component:default/claims-api
 ```
 
-Then add the plugin to your backend in `packages/backend/src/index.ts`:
+- Services: `coreServices.rootConfig`, `logger`, `cache`, `httpAuth`, `httpRouter` and `catalogServiceRef`.
+- The entity is fetched with the caller's credentials, so catalog read permissions apply.
+- Each section is cached for `codeQuality.cacheTtlSeconds` (default 300s) and failures are isolated per section.
+- **Mock mode**: with no tokens (or `codeQuality.mode: mock`) deterministic fake data is returned, so the demo runs offline.
 
-```ts
-const backend = createBackend();
-// ...
-backend.add(import('@internal/backstage-plugin-code-quality-backend'));
+```yaml
+codeQuality:
+  mode: auto # auto | mock | live
+  cacheTtlSeconds: 300
+  sonarqube:
+    baseUrl: https://sonarcloud.io
+    token: ${SONARQUBE_TOKEN}
+  github:
+    apiBaseUrl: https://api.github.com # token reused from integrations.github
 ```
 
-## Development
-
-This plugin backend can be started in a standalone mode from directly in this
-package with `yarn start`. It is a limited setup that is most convenient when
-developing the plugin backend itself.
-
-If you want to run the entire project, including the frontend, run `yarn start` from the root directory.
+Run standalone with `yarn start` in this folder (mock auth + in-memory catalog, see `dev/index.ts`).

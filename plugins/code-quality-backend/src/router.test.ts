@@ -3,65 +3,69 @@ import {
   mockErrorHandler,
   mockServices,
 } from '@backstage/backend-test-utils';
+import { NotFoundError } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
-
 import { createRouter } from './router';
-import { todoListServiceRef } from './services/TodoListService';
 
-const mockTodoItem = {
-  title: 'Do the thing',
-  id: '123',
-  createdBy: mockCredentials.user().principal.userEntityRef,
-  createdAt: new Date().toISOString(),
-};
-
-// TEMPLATE NOTE:
-// Testing the router directly allows you to write a unit test that mocks the provided options.
 describe('createRouter', () => {
   let app: express.Express;
-  let todoList: jest.Mocked<typeof todoListServiceRef.T>;
+  const getReport = jest.fn();
 
   beforeEach(async () => {
-    todoList = {
-      createTodo: jest.fn(),
-      listTodos: jest.fn(),
-      getTodo: jest.fn(),
-    };
+    getReport.mockReset();
     const router = await createRouter({
       httpAuth: mockServices.httpAuth(),
-      todoList,
+      service: { getReport },
     });
     app = express();
     app.use(router);
     app.use(mockErrorHandler());
   });
 
-  it('should create a TODO', async () => {
-    todoList.createTodo.mockResolvedValue(mockTodoItem);
+  it('returns the report for a normalized entity ref', async () => {
+    getReport.mockResolvedValue({ entityRef: 'component:default/claims-api' });
 
-    const response = await request(app).post('/todos').send({
-      title: 'Do the thing',
-    });
+    const res = await request(app).get('/report?entityRef=claims-api');
 
-    expect(response.status).toBe(201);
-    expect(response.body).toEqual(mockTodoItem);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ entityRef: 'component:default/claims-api' });
+    expect(getReport).toHaveBeenCalledWith(
+      'component:default/claims-api',
+      mockCredentials.user(),
+    );
   });
 
-  it('should not allow unauthenticated requests to create a TODO', async () => {
-    todoList.createTodo.mockResolvedValue(mockTodoItem);
+  it('accepts service-to-service calls', async () => {
+    getReport.mockResolvedValue({});
+    const res = await request(app)
+      .get('/report?entityRef=component:default/claims-api')
+      .set('Authorization', mockCredentials.service.header());
+    expect(res.status).toBe(200);
+    expect(getReport.mock.calls[0][1].principal.type).toBe('service');
+  });
 
-    // TEMPLATE NOTE:
-    // The HttpAuth mock service considers all requests to be authenticated as a
-    // mock user by default. In order to test other cases we need to explicitly
-    // pass an authorization header with mock credentials.
-    const response = await request(app)
-      .post('/todos')
-      .set('Authorization', mockCredentials.none.header())
-      .send({
-        title: 'Do the thing',
-      });
+  it('rejects unauthenticated requests', async () => {
+    const res = await request(app)
+      .get('/report?entityRef=component:default/claims-api')
+      .set('Authorization', mockCredentials.none.header());
+    expect(res.status).toBe(401);
+    expect(getReport).not.toHaveBeenCalled();
+  });
 
-    expect(response.status).toBe(401);
+  it('validates the entityRef query parameter', async () => {
+    expect((await request(app).get('/report')).status).toBe(400);
+    expect(
+      (await request(app).get('/report?entityRef=component:default/')).status,
+    ).toBe(400);
+    expect(getReport).not.toHaveBeenCalled();
+  });
+
+  it('maps NotFoundError to 404', async () => {
+    getReport.mockRejectedValue(new NotFoundError('nope'));
+    const res = await request(app).get(
+      '/report?entityRef=component:default/ghost',
+    );
+    expect(res.status).toBe(404);
   });
 });

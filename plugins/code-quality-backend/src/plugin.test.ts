@@ -1,129 +1,111 @@
-import {
-  mockCredentials,
-  startTestBackend,
-} from '@backstage/backend-test-utils';
-import { createServiceFactory } from '@backstage/backend-plugin-api';
-import { todoListServiceRef } from './services/TodoListService';
-import { codeQualityPlugin } from './plugin';
-import request from 'supertest';
+import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
 import { catalogServiceMock } from '@backstage/plugin-catalog-node/testUtils';
-import {
-  ConflictError,
-  AuthenticationError,
-  NotAllowedError,
-} from '@backstage/errors';
+import request from 'supertest';
+import { codeQualityPlugin } from './plugin';
 
-// TEMPLATE NOTE:
-// Plugin tests are integration tests for your plugin, ensuring that all pieces
-// work together end-to-end. You can still mock injected backend services
-// however, just like anyone who installs your plugin might replace the
-// services with their own implementations.
-describe('plugin', () => {
-  it('should create and read TODO items', async () => {
+const claimsApi = {
+  apiVersion: 'backstage.io/v1alpha1',
+  kind: 'Component',
+  metadata: {
+    name: 'claims-api',
+    namespace: 'default',
+    annotations: {
+      'sonarqube.org/project-key': 'claims-api',
+      'github.com/project-slug': 'acme/claims-api',
+    },
+  },
+  spec: { type: 'service', owner: 'group:default/claims-squad' },
+};
+
+describe('code-quality plugin (integration)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('serves mock data offline when no tokens are configured', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
     const { server } = await startTestBackend({
-      features: [codeQualityPlugin],
+      features: [
+        codeQualityPlugin,
+        catalogServiceMock.factory({ entities: [claimsApi] }),
+      ],
     });
 
-    await request(server).get('/api/code-quality/todos').expect(200, {
-      items: [],
+    const res = await request(server).get(
+      '/api/code-quality/report?entityRef=component:default/claims-api',
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.sonarqube).toMatchObject({
+      status: 'ok',
+      source: 'mock',
+      data: { projectKey: 'claims-api' },
     });
+    expect(res.body.github).toMatchObject({ status: 'ok', source: 'mock' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 
-    const createRes = await request(server)
-      .post('/api/code-quality/todos')
-      .send({ title: 'My Todo' });
-
-    expect(createRes.status).toBe(201);
-    expect(createRes.body).toEqual({
-      id: expect.any(String),
-      title: 'My Todo',
-      createdBy: mockCredentials.user().principal.userEntityRef,
-      createdAt: expect.any(String),
-    });
-
-    const createdTodoItem = createRes.body;
-
-    await request(server)
-      .get('/api/code-quality/todos')
-      .expect(200, {
-        items: [createdTodoItem],
+  it('calls the SonarQube Web API when a token is configured', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async input => {
+        const url = String(input);
+        if (url.includes('project_status')) {
+          return new Response(
+            JSON.stringify({ projectStatus: { status: 'WARN' } }),
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            component: { measures: [{ metric: 'coverage', value: '72.5' }] },
+          }),
+        );
       });
 
-    await request(server)
-      .get(`/api/code-quality/todos/${createdTodoItem.id}`)
-      .expect(200, createdTodoItem);
-  });
-
-  it('should create TODO item with catalog information', async () => {
     const { server } = await startTestBackend({
       features: [
         codeQualityPlugin,
-        catalogServiceMock.factory({
-          entities: [
-            {
-              apiVersion: 'backstage.io/v1alpha1',
-              kind: 'Component',
-              metadata: {
-                name: 'my-component',
-                namespace: 'default',
-                title: 'My Component',
-              },
-              spec: {
-                type: 'service',
-                owner: 'me',
+        catalogServiceMock.factory({ entities: [claimsApi] }),
+        mockServices.rootConfig.factory({
+          data: {
+            codeQuality: {
+              sonarqube: {
+                baseUrl: 'https://sonar.example.com',
+                token: 'secret',
               },
             },
-          ],
+          },
         }),
       ],
     });
 
-    const createRes = await request(server)
-      .post('/api/code-quality/todos')
-      .send({ title: 'My Todo', entityRef: 'component:default/my-component' });
+    const res = await request(server).get(
+      '/api/code-quality/report?entityRef=component:default/claims-api',
+    );
 
-    expect(createRes.status).toBe(201);
-    expect(createRes.body).toEqual({
-      id: expect.any(String),
-      title: '[My Component] My Todo',
-      createdBy: mockCredentials.user().principal.userEntityRef,
-      createdAt: expect.any(String),
+    expect(res.status).toBe(200);
+    expect(res.body.sonarqube).toEqual({
+      status: 'ok',
+      source: 'live',
+      data: {
+        projectKey: 'claims-api',
+        dashboardUrl: 'https://sonar.example.com/dashboard?id=claims-api',
+        qualityGate: 'WARN',
+        metrics: { coverage: 72.5 },
+      },
     });
+    expect(res.body.github.source).toBe('mock');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('should forward errors from the TodoListService', async () => {
+  it('returns 404 for entities that are not in the catalog', async () => {
     const { server } = await startTestBackend({
       features: [
         codeQualityPlugin,
-        createServiceFactory({
-          service: todoListServiceRef,
-          deps: {},
-          factory: () => ({
-            createTodo: jest.fn().mockRejectedValue(new ConflictError()),
-            listTodos: jest.fn().mockRejectedValue(new AuthenticationError()),
-            getTodo: jest.fn().mockRejectedValue(new NotAllowedError()),
-          }),
-        }),
+        catalogServiceMock.factory({ entities: [] }),
       ],
     });
-
-    const createRes = await request(server)
-      .post('/api/code-quality/todos')
-      .send({ title: 'My Todo', entityRef: 'component:default/my-component' });
-    expect(createRes.status).toBe(409);
-    expect(createRes.body).toMatchObject({
-      error: { name: 'ConflictError' },
-    });
-
-    const listRes = await request(server).get('/api/code-quality/todos');
-    expect(listRes.status).toBe(401);
-    expect(listRes.body).toMatchObject({
-      error: { name: 'AuthenticationError' },
-    });
-
-    const getRes = await request(server).get('/api/code-quality/todos/123');
-    expect(getRes.status).toBe(403);
-    expect(getRes.body).toMatchObject({
-      error: { name: 'NotAllowedError' },
-    });
+    const res = await request(server).get(
+      '/api/code-quality/report?entityRef=component:default/ghost',
+    );
+    expect(res.status).toBe(404);
   });
 });

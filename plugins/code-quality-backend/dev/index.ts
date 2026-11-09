@@ -2,26 +2,12 @@ import { createBackend } from '@backstage/backend-defaults';
 import { mockServices } from '@backstage/backend-test-utils';
 import { catalogServiceMock } from '@backstage/plugin-catalog-node/testUtils';
 
-// TEMPLATE NOTE:
-// This is the development setup for your plugin that wires up a
-// minimal backend that can use both real and mocked plugins and services.
+// Standalone dev backend for the plugin (mock auth + in-memory catalog).
+// Run `yarn start` in this package, then:
 //
-// Start up the backend by running `yarn start` in the package directory.
-// Once it's up and running, try out the following requests:
-//
-// Create a new todo item, standalone or for the sample component:
-//
-//   curl http://localhost:7007/api/code-quality/todos -H 'Content-Type: application/json' -d '{"title": "My Todo"}'
-//   curl http://localhost:7007/api/code-quality/todos -H 'Content-Type: application/json' -d '{"title": "My Todo", "entityRef": "component:default/sample"}'
-//
-// List TODOs:
-//
-//   curl http://localhost:7007/api/code-quality/todos
-//
-// Explicitly make an unauthenticated request, or with service auth:
-//
-//   curl http://localhost:7007/api/code-quality/todos -H 'Authorization: Bearer mock-none-token'
-//   curl http://localhost:7007/api/code-quality/todos -H 'Authorization: Bearer mock-service-token'
+//   curl 'http://localhost:7007/api/code-quality/report?entityRef=component:default/sample'
+//   curl 'http://localhost:7007/api/code-quality/report?entityRef=component:default/sample' \
+//     -H 'Authorization: Bearer mock-none-token'   # -> 401
 
 const backend = createBackend();
 
@@ -46,6 +32,10 @@ backend.add(
         metadata: {
           name: 'sample',
           title: 'Sample Component',
+          annotations: {
+            'sonarqube.org/project-key': 'sample',
+            'github.com/project-slug': 'acme/sample',
+          },
         },
         spec: {
           type: 'service',
