@@ -234,6 +234,19 @@ catalog:
     #   rules:
     #     - allow: [User, Group]
 
+# Stage 2 - code-quality plugin (plugins/code-quality-backend).
+# Without tokens every section is served from deterministic mock data, so the
+# demo works offline. An unset ${VAR} drops the key (never use empty strings).
+codeQuality:
+  mode: ${CODE_QUALITY_MODE:-auto} # auto | mock | live
+  cacheTtlSeconds: 300
+  sonarqube:
+    baseUrl: ${SONARQUBE_BASE_URL:-https://sonarcloud.io}
+    token: ${SONARQUBE_TOKEN}
+  github:
+    # Token comes from integrations.github (GITHUB_TOKEN)
+    apiBaseUrl: https://api.github.com
+
 kubernetes:
   # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options
 

@@ -2,6 +2,13 @@
 # the platform domain owned by FastFlow. Annotations prefixed with fastflow.io/
 # are the lab's governance metadata (tier, criticality, data classification);
 # they are enforced later by the Scaffolder action and permission policy.
+#
+# code-quality card (stage 2) is driven by two annotations:
+#   sonarqube.org/project-key -> SonarQube quality gate + metrics
+#   github.com/project-slug   -> repository info + latest GitHub Actions runs
+# broker-quote-widget has neither, so the card is hidden there on purpose;
+# backstage-idp-lab (catalog-info.yaml) points to this real repository and
+# shows live data when GITHUB_TOKEN is set.
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Domain

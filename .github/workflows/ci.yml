@@ -96,10 +96,20 @@ jobs:
             COUNT=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
               "http://localhost:7007/api/catalog/entities/by-query?filter=kind=component&limit=100" | jq '.items | length')
             echo "attempt $i: $COUNT components in catalog"
-            [ "$COUNT" -ge 5 ] && exit 0
+            [ "$COUNT" -ge 5 ] && break
             sleep 5
           done
-          exit 1
+          [ "$COUNT" -ge 5 ]
+
+          # Stage 2: code-quality plugin answers from mock providers offline
+          REPORT=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
+            "http://localhost:7007/api/code-quality/report?entityRef=component:default/claims-api")
+          echo "$REPORT" | jq -c '{sonarqube: .sonarqube.status, github: .github.status, source: .sonarqube.source}'
+          test "$(echo "$REPORT" | jq -r .sonarqube.status)" = ok
+          test "$(echo "$REPORT" | jq -r .github.status)" = ok
+          # Unauthenticated calls are rejected
+          test "$(curl -s -o /dev/null -w '%{http_code}' \
+            "http://localhost:7007/api/code-quality/report?entityRef=component:default/claims-api")" = 401
 
       - name: Logs on failure
         if: failure()
