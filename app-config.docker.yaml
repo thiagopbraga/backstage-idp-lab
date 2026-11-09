@@ -1,0 +1,9 @@
+# LOCAL DEMO ONLY - loaded by docker-compose on top of app-config.production.yaml.
+# Enables the guest provider inside the container (NODE_ENV=production) so the
+# lab can be demoed without an IdP. Never ship this file to a real environment:
+# production sign-in is OIDC (Entra ID / Keycloak), see README.
+auth:
+  providers:
+    guest:
+      userEntityRef: ${BACKSTAGE_GUEST_USER:-user:default/ana.souza}
+      dangerouslyAllowOutsideDevelopment: true

@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: backstage-idp-lab
+  title: FastFlow IDP Lab (Backstage)
+  description: Backstage instance of the FastFlow Internal Developer Platform lab.
+  annotations:
+    github.com/project-slug: thiagopbraga/backstage-idp-lab
+    fastflow.io/tier: tier-2
+    fastflow.io/criticality: medium
+    fastflow.io/data-classification: internal
+spec:
+  type: website
+  lifecycle: experimental
+  owner: group:default/fastflow
+  system: fastflow-idp

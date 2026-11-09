@@ -1,0 +1,17 @@
+# Multi-stage build context: sources are needed, build outputs and deps are not.
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+.yarn/cache
+.yarn/install-state.gz
+dist-types
+packages/*/dist
+packages/*/node_modules
+plugins/*/dist
+plugins/*/node_modules
+*.local.yaml
+coverage
+e2e-test-report

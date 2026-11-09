@@ -1,0 +1,75 @@
+# Production overlay. Loaded after app-config.yaml:
+#   node packages/backend --config app-config.yaml --config app-config.production.yaml
+# Every environment-specific value comes from environment variables (injected by
+# Kubernetes/OpenShift Secrets + ConfigMaps, or docker-compose's .env locally).
+# No secret is ever committed to this file.
+
+app:
+  # In production the frontend is served by the backend (app-backend plugin),
+  # so app.baseUrl must equal backend.baseUrl.
+  baseUrl: ${BACKEND_BASE_URL:-http://localhost:7007}
+
+backend:
+  baseUrl: ${BACKEND_BASE_URL:-http://localhost:7007}
+  # Bind to all interfaces inside the container.
+  listen: ':7007'
+  cors:
+    origin: ${BACKEND_BASE_URL:-http://localhost:7007}
+
+  # config options: https://node-postgres.com/apis/client
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT:-5432}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      # Managed Postgres (RDS/Aurora/Azure Database) in a regulated environment
+      # must use TLS. Set PGSSLMODE=require (or verify-full) and mount the CA:
+      # ssl:
+      #   ca:
+      #     $file: /etc/backstage/certs/rds-ca.pem
+
+  # Static tokens for machine callers (e.g. CI publishing TechDocs, CMDB sync jobs).
+  # auth:
+  #   externalAccess:
+  #     - type: static
+  #       options:
+  #         token: ${CI_EXTERNAL_ACCESS_TOKEN}
+  #         subject: ci-pipelines
+
+# Sign-in in production is SSO only (OIDC: Microsoft Entra ID or Red Hat build of
+# Keycloak). The guest provider refuses to run outside NODE_ENV=development unless
+# explicitly enabled (see app-config.docker.yaml, used ONLY for the local demo).
+# auth:
+#   environment: production
+#   providers:
+#     oidc:
+#       production:
+#         metadataUrl: ${OIDC_METADATA_URL}
+#         clientId: ${OIDC_CLIENT_ID}
+#         clientSecret: ${OIDC_CLIENT_SECRET}
+#         prompt: auto
+#         signIn:
+#           resolvers:
+#             - resolver: emailMatchingUserEntityProfileEmail
+
+catalog:
+  # Paths are relative to the working directory of the container (/app).
+  locations:
+    - type: file
+      target: ./examples/entities.yaml
+
+    # This repository's own descriptor (the portal is in its own catalog)
+    - type: file
+      target: ./catalog-info.yaml
+
+    - type: file
+      target: ./examples/template/template.yaml
+      rules:
+        - allow: [Template]
+
+    - type: file
+      target: ./examples/org.yaml
+      rules:
+        - allow: [User, Group]
