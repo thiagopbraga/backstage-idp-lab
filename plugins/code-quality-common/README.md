@@ -1,5 +1,5 @@
 # @internal/backstage-plugin-code-quality-common
 
-Welcome to the common package for the code-quality plugin!
-
-_This plugin was created through the Backstage CLI_
+Types (`CodeQualityReport`, `SectionResult`, ...) and annotation helpers shared by
+`@internal/backstage-plugin-code-quality` (frontend) and
+`@internal/backstage-plugin-code-quality-backend`.

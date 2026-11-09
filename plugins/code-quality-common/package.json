@@ -30,5 +30,8 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "dependencies": {
+    "@backstage/catalog-model": "^1.10.2"
+  }
 }

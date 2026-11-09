@@ -5407,6 +5407,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@internal/backstage-plugin-code-quality-common@workspace:plugins/code-quality-common"
   dependencies:
+    "@backstage/catalog-model": "npm:^1.10.2"
     "@backstage/cli": "npm:^0.36.7"
   languageName: unknown
   linkType: soft
