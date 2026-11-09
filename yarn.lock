@@ -5466,6 +5466,17 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:^, @internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:plugins/permission-backend-module-fastflow-policy":
+  version: 0.0.0-use.local
+  resolution: "@internal/backstage-plugin-permission-backend-module-fastflow-policy@workspace:plugins/permission-backend-module-fastflow-policy"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.11.0"
+    "@backstage/backend-test-utils": "npm:^1.11.8"
+    "@backstage/cli": "npm:^0.36.7"
+    "@backstage/plugin-permission-backend": "npm:^0.7.17"
+  languageName: unknown
+  linkType: soft
+
 "@internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:^, @internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:plugins/scaffolder-backend-module-fastflow":
   version: 0.0.0-use.local
   resolution: "@internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:plugins/scaffolder-backend-module-fastflow"
@@ -13657,6 +13668,7 @@ __metadata:
     "@backstage/plugin-techdocs-backend": "npm:^2.4.0"
     "@backstage/plugin-user-settings-backend": "npm:^0.4.8"
     "@internal/backstage-plugin-code-quality-backend": "workspace:^"
+    "@internal/backstage-plugin-permission-backend-module-fastflow-policy": "workspace:^"
     "@internal/backstage-plugin-scaffolder-backend-module-fastflow": "workspace:^"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"

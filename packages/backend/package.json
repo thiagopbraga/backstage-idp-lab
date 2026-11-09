@@ -47,6 +47,7 @@
     "@backstage/plugin-techdocs-backend": "^2.4.0",
     "@backstage/plugin-user-settings-backend": "^0.4.8",
     "@internal/backstage-plugin-code-quality-backend": "workspace:^",
+    "@internal/backstage-plugin-permission-backend-module-fastflow-policy": "workspace:^",
     "@internal/backstage-plugin-scaffolder-backend-module-fastflow": "workspace:^",
     "app": "link:../app",
     "node-gyp": "^10.0.0",
