@@ -16,10 +16,21 @@ export async function getJson<T>(
     timeoutMs?: number;
   },
 ): Promise<T> {
-  const response = await fetchFn(url, {
-    headers: { Accept: 'application/json', ...options.headers },
-    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetchFn(url, {
+      headers: { Accept: 'application/json', ...options.headers },
+      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // Network errors / timeouts: undici only says "fetch failed", the useful
+    // part (ECONNREFUSED, ENOTFOUND, TimeoutError) lives in error.cause.
+    const cause = (error as { cause?: { code?: string; message?: string } })
+      .cause;
+    const detail =
+      cause?.code ?? cause?.message ?? (error as Error).name ?? 'network error';
+    throw new Error(`${options.upstream} unreachable (${detail})`);
+  }
   if (response.status === 404) {
     throw new NotFoundError(`${options.upstream}: resource not found`);
   }

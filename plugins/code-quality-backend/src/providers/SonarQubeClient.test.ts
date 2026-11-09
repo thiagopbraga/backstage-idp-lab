@@ -103,4 +103,21 @@ describe('SonarQubeClient', () => {
       'SonarQube responded 403 Forbidden',
     );
   });
+
+  it('reports network failures with their cause', async () => {
+    const client = new SonarQubeClient({
+      baseUrl: 'http://127.0.0.1:9',
+      token: 't',
+      fetchFn: (async () => {
+        throw new TypeError('fetch failed', {
+          cause: Object.assign(new Error('connect ECONNREFUSED'), {
+            code: 'ECONNREFUSED',
+          }),
+        });
+      }) as typeof fetch,
+    });
+    await expect(client.getSummary('x')).rejects.toThrow(
+      'SonarQube unreachable (ECONNREFUSED)',
+    );
+  });
 });
