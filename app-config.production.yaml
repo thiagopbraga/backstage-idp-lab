@@ -64,8 +64,9 @@ catalog:
     - type: file
       target: ./catalog-info.yaml
 
+    # FastFlow golden paths (Software Templates)
     - type: file
-      target: ./examples/template/template.yaml
+      target: ./examples/templates/nestjs-service/template.yaml
       rules:
         - allow: [Template]
 

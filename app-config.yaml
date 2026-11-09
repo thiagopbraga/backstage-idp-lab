@@ -212,9 +212,9 @@ catalog:
     - type: file
       target: ../../catalog-info.yaml
 
-    # Local example template
+    # FastFlow golden paths (Software Templates) - stage 3
     - type: file
-      target: ../../examples/template/template.yaml
+      target: ../../examples/templates/nestjs-service/template.yaml
       rules:
         - allow: [Template]
 
