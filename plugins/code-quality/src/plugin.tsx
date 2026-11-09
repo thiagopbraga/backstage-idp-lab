@@ -28,6 +28,9 @@ export const codeQualityApi = ApiBlueprint.make({
 export const codeQualityEntityCard = EntityCardBlueprint.make({
   name: 'overview',
   params: {
+    // "info" places the card in the side column next to "About", so quality
+    // signals are visible without scrolling.
+    type: 'info',
     filter: isCodeQualityAvailable,
     loader: () =>
       import('./components/CodeQualityCard').then(m => <m.CodeQualityCard />),
