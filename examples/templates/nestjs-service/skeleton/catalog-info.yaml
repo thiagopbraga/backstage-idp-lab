@@ -1,0 +1,24 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  description: ${{ values.description | dump }}
+  tags: [nestjs, typescript]
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+{%- if values.repoSlug %}
+    github.com/project-slug: ${{ values.repoSlug }}
+{%- endif %}
+    sonarqube.org/project-key: ${{ values.name }}
+    # Governance metadata validated by fastflow:governance:validate
+{%- for key, value in values.annotations %}
+    ${{ key }}: ${{ value }}
+{%- endfor %}
+    fastflow.io/golden-path: nestjs-service
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ${{ values.owner }}
+{%- if values.system %}
+  system: ${{ values.system }}
+{%- endif %}

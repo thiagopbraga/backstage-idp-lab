@@ -13,9 +13,9 @@ O laboratório é entregue em etapas, **um PR por etapa**:
 | Etapa | Entrega                                                                                                                                                                       | Status     |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | 1     | Backstage (novo backend system) + PostgreSQL via docker-compose, Dockerfile multi-stage, `app-config` com variáveis de ambiente, catálogo de exemplo com dois+ times, CI      | ✅ PR #1   |
-| 2     | Plugin backend customizado (SonarQube/GitHub API via `coreServices`, modo mock offline) + card de frontend na página da entidade                                              | ✅ este PR |
-| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ⏳ próximo |
-| 4     | `PermissionPolicy` customizada com decisões condicionais por ownership (`isEntityOwner`) + mapeamento de claims OIDC (Entra ID / Keycloak)                                    | ⏳         |
+| 2     | Plugin backend customizado (SonarQube/GitHub API via `coreServices`, modo mock offline) + card de frontend na página da entidade                                              | ✅ PR #2   |
+| 3     | Custom Scaffolder Action (`createTemplateAction`) validando regras corporativas (nomenclatura, owner existente, tier/criticidade/classificação de dados) + golden path NestJS | ✅ este PR |
+| 4     | `PermissionPolicy` customizada com decisões condicionais por ownership (`isEntityOwner`) + mapeamento de claims OIDC (Entra ID / Keycloak)                                    | ⏳ próximo |
 
 ## Arquitetura
 
@@ -30,6 +30,7 @@ flowchart LR
     subgraph plugins["Plugins (backend.add)"]
       cat[catalog]
       scaf[scaffolder]
+      ffmod["scaffolder-backend-module-fastflow<br/>(etapa 3)"]
       auth["auth + guest provider<br/>(somente demo)"]
       perm[permission]
       search["search (engine pg)"]
@@ -37,6 +38,7 @@ flowchart LR
       cq["code-quality<br/>(etapa 2)"]
     end
     be --> plugins
+    ffmod -->|"scaffolderActionsExtensionPoint<br/>fastflow:governance:validate<br/>fastflow:publish:local<br/>fastflow:github:dispatch-workflow"| scaf
   end
 
   subgraph pg["PostgreSQL 17"]
@@ -55,6 +57,10 @@ flowchart LR
   cq -->|"getEntityByRef (credenciais do usuário)"| cat
   cq -->|"Web API (token ou mock)"| sonar[(SonarQube / SonarCloud)]
   cq -->|"REST API (token ou mock)"| gh[(GitHub API)]
+  tpl["examples/templates/nestjs-service<br/>template.yaml + skeleton/"] -->|"location type: file"| cat
+  ffmod -->|"owner existe? nome livre?<br/>(credenciais do iniciador)"| cat
+  ffmod -->|"modo offline"| out[("FASTFLOW_LOCAL_OUTPUT_DIR")]
+  scaf -->|"publish:github + workflow_dispatch<br/>(opcional, com token)"| gh
   env[".env / Secrets"] -.->|"${VAR} substitution"| be
 ```
 
@@ -85,17 +91,24 @@ Pontos de arquitetura que valem discutir em entrevista:
 ├── plugins/
 │   ├── code-quality-backend/  # etapa 2: /api/code-quality (SonarQube + GitHub)
 │   ├── code-quality/          # etapa 2: card da entidade (new frontend system)
-│   └── code-quality-common/   # etapa 2: tipos e anotações compartilhados
+│   ├── code-quality-common/   # etapa 2: tipos e anotações compartilhados
+│   └── scaffolder-backend-module-fastflow/  # etapa 3: actions de governança do golden path
+│       └── src/
+│           ├── governance/rules.ts          # regras puras (nome, tier, criticidade, dados)
+│           ├── actions/                     # validate, publish:local, dispatch-workflow
+│           └── module.ts                    # createBackendModule (scaffolder)
 ├── examples/
 │   ├── org.yaml             # Groups e Users
 │   ├── entities.yaml        # Domains, Systems, Components, APIs, Resources
-│   └── template/            # template de exemplo (substituído na etapa 3)
+│   └── templates/
+│       └── nestjs-service/  # etapa 3: golden path NestJS (template.yaml + skeleton/ Nunjucks)
 ├── catalog-info.yaml        # o próprio portal no catálogo
 ├── app-config.yaml          # base (dev) com ${VAR:-default}
 ├── app-config.production.yaml  # overlay de produção (somente env vars)
 ├── app-config.docker.yaml   # overlay da demo local (habilita guest no container)
 ├── Dockerfile               # build multi-stage
 ├── docker-compose.yml       # Postgres + Backstage
+├── scripts/smoke-scaffolder.sh  # etapa 3: execução rejeitada + execução válida via API
 └── .github/workflows/ci.yml # CI
 ```
 
@@ -213,6 +226,41 @@ Para dados reais, defina no `.env` (descomentando as linhas) `GITHUB_TOKEN` e/ou
 
 **Testes** (Jest): clients com `fetch` mockado (mapeamento das respostas, headers de auth, 404/403, erro de rede, slug malicioso), service (cache, credenciais repassadas ao catálogo, isolamento de falhas), router (`supertest` + `mockServices.httpAuth`: 200/400/401/404, chamada service-to-service), integração com `startTestBackend` (mock offline e SonarQube "live" com `fetch` interceptado) e o card com `renderInTestApp` + `TestApiProvider`.
 
+## Etapa 3 — golden path NestJS com governança no Scaffolder
+
+| Execução rejeitada                                                                     | Execução válida (offline)                                                              |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| ![Task falhando na FastFlow governance check](docs/images/scaffolder-rejected-run.png) | ![Task concluída publicando na pasta local](docs/images/scaffolder-successful-run.png) |
+
+O pacote `@internal/backstage-plugin-scaffolder-backend-module-fastflow` é um **módulo** do plugin `scaffolder` (`createBackendModule({ pluginId: 'scaffolder', moduleId: 'fastflow' })`) que registra três actions via `scaffolderActionsExtensionPoint` — sem fork nem patch do scaffolder. Ele é adicionado em `packages/backend/src/index.ts` com `backend.add(import(...))`.
+
+| Action                              | O que faz                                                                                                                                                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fastflow:governance:validate`      | Primeiro passo do template. Valida nome, owner e campos de governança **antes** de gerar qualquer arquivo; devolve `componentRef`, `owner` normalizado e as anotações `fastflow.io/*` prontas para o `catalog-info.yaml`. |
+| `fastflow:publish:local`            | Publicação offline: copia o workspace para `${FASTFLOW_LOCAL_OUTPUT_DIR}/<nome>-<taskId>` (caminho resolvido com `resolveSafeChildPath`; em dry-run não escreve nada).                                                    |
+| `fastflow:github:dispatch-workflow` | Dispara `workflow_dispatch` no GitHub Actions usando o token de `integrations.github`. **Sem token, em dry-run ou em erro, registra um warning e devolve `dispatched: false`** (a menos que `failOnError: true`).         |
+
+**Regras de governança** (`src/governance/rules.ts`, funções puras e testáveis):
+
+- Nome: kebab-case, 3–40 caracteres, sufixo obrigatório (`-api`, `-service`, `-worker`, `-bff`, `-web`) — política configurável em `fastflow.governance.naming`.
+- Nome livre: não pode existir `Component` com o mesmo nome no namespace.
+- Owner: precisa ser uma entidade `Group` **existente** no catálogo (um `User` ou um time inexistente são rejeitados). A consulta usa `ctx.getInitiatorCredentials()`, ou seja, as credenciais de quem disparou o template.
+- `tier`, `criticality` e `dataClassification` obrigatórios e dentro dos enums das anotações `fastflow.io/tier`, `fastflow.io/criticality` e `fastflow.io/data-classification`.
+- Regras cruzadas: `tier-1` exige criticidade `high`; dados `restricted` (ex.: dados pessoais, LGPD) não podem ser `tier-3`.
+- **Todas as violações são reportadas de uma vez** em um único `InputError` — o desenvolvedor corrige tudo numa rodada só, e os passos seguintes são pulados.
+
+Decisões de design que valem discutir:
+
+- **Validação no servidor, não no formulário.** O campo `name` não tem `pattern` no JSON Schema de propósito: regra de formulário é UX e pode ser burlada chamando `POST /api/scaffolder/v2/tasks` direto. A action é o ponto de controle. O schema dos parâmetros continua exigindo os campos de governança (o backend também valida os `parameters` e responde 400 antes de criar a task), e a action revalida para qualquer outro template que a use.
+- **Offline por padrão, GitHub opcional.** O passo 3 do formulário escolhe `publishTarget`: `local` (padrão, funciona sem nenhuma credencial — é o que roda no CI) ou `github` (`publish:github` → `catalog:register` → `fastflow:github:dispatch-workflow`). O `catalog:register` só roda no caminho GitHub porque, por padrão, o catálogo só aceita locations do tipo `url`; registrar uma pasta local exigiria abrir `catalog.rules` para `file`, o que não faria sentido em produção.
+- **Owner via `EntityPicker`** filtrado por `kind: Group`, mas com `allowArbitraryValues: true` — assim dá para demonstrar a rejeição de um time inexistente pela própria UI.
+
+**Template** (`examples/templates/nestjs-service/template.yaml`, registrado como location do catálogo): parâmetros em três páginas (Service, Governance, Publish); passos `governance` → `fetch:template` (`./skeleton`) → `publish-local` _ou_ `publish-github` → `register` → `pipeline`. O skeleton Nunjucks gera um serviço NestJS 11 com health check (`@nestjs/terminus`), teste Jest, Dockerfile não-root, TechDocs (`mkdocs.yml`), workflow de CI (com `{% raw %}` para preservar as expressões `${{ github.* }}`) e um `catalog-info.yaml` já com owner, system e as anotações de governança (`fastflow.io/golden-path: nestjs-service`).
+
+**Testes** (Jest, catálogo mockado com `catalogServiceMock`): regras puras (nomes válidos/inválidos, limites, sufixos, enums, regras cruzadas); action de validação (caso válido, nome ruim, owner ausente, owner desconhecido, owner que é `User`, campos de governança ausentes, nome já usado, várias violações agregadas, credenciais do iniciador repassadas ao catálogo); dispatch (sem token, dry-run, sucesso, erro com e sem `failOnError`); publicação local (cópia, dry-run, nome inseguro).
+
+**CI**: além dos testes, o job `docker` roda `scripts/smoke-scaffolder.sh` contra o container: uma execução inválida tem que terminar `failed` com a mensagem da governança, e uma válida tem que terminar `completed`.
+
 ## Roteiro de demo
 
 1. `docker compose up --build` e mostrar o `HEALTHCHECK` ficando `healthy` (`docker compose ps`).
@@ -235,6 +283,7 @@ Para dados reais, defina no `.env` (descomentando as linhas) `GITHUB_TOKEN` e/ou
 6. Reiniciar como `bruno.lima` (`BACKSTAGE_GUEST_USER`) e mostrar que o ownership no token muda — base para a `PermissionPolicy` da etapa 4.
 
 7. **Etapa 2 — card de qualidade**: na `claims-api`, mostrar o card _Code quality & CI_ (quality gate, cobertura, vulnerabilidades, últimas execuções do GitHub Actions, selo `mock data`). Abrir `broker-quote-widget` e mostrar que o card não aparece (sem anotações). Depois, a API direto:
+
    ```bash
    TOKEN=$(curl -s -H 'X-Requested-With: XMLHttpRequest' http://localhost:7007/api/auth/guest/refresh | jq -r .backstageIdentity.token)
    curl -s -H "Authorization: Bearer $TOKEN" \
@@ -242,10 +291,26 @@ Para dados reais, defina no `.env` (descomentando as linhas) `GITHUB_TOKEN` e/ou
    curl -s -o /dev/null -w '%{http_code}\n' \
      'http://localhost:7007/api/code-quality/report?entityRef=component:default/claims-api'   # 401 sem token
    ```
+
    Pontos para discutir: credenciais do usuário repassadas ao catálogo, cache e rate limit, isolamento de falhas, por que um plugin próprio em vez de só o proxy (agregação, normalização, cache e autorização no servidor).
+
+8. **Etapa 3 — golden path com governança**: em _Create_, escolher **NestJS service (FastFlow golden path)**.
+   - **(a) Execução rejeitada**: nome `ClaimsIntake`, owner digitado `ghost-team`, `Tier 1`, criticidade `low`. Ao criar, a task falha já no primeiro passo com as 4 violações de uma vez (kebab-case, sufixo, `tier-1` → `high`, owner inexistente) e nenhum arquivo é gerado (os demais passos aparecem como _skipped_).
+   - **(b) Execução válida**: _Start over_, nome `claims-quote-api`, owner `claims-squad` (pelo picker), `Tier 2`, `high`, `confidential`, publicação `local`. A task conclui e mostra onde o projeto foi escrito (`/tmp/fastflow-golden-paths/claims-quote-api-<taskId>` dentro do container).
+   - O mesmo pela API (é o que o CI faz):
+     ```bash
+     TOKEN=$(curl -s -H 'X-Requested-With: XMLHttpRequest' http://localhost:7007/api/auth/guest/refresh | jq -r .backstageIdentity.token)
+     TOKEN=$TOKEN scripts/smoke-scaffolder.sh
+     # ou uma task avulsa:
+     curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+       -X POST http://localhost:7007/api/scaffolder/v2/tasks \
+       -d '{"templateRef":"template:default/fastflow-nestjs-service","values":{"name":"claims-api","description":"dup","owner":"user:default/ana.souza","tier":"tier-3","criticality":"low","dataClassification":"restricted","publishTarget":"local"}}'
+     # -> falha com: dados restricted não podem ser tier-3, owner precisa ser Group, nome claims-api já existe
+     ```
+   - Conferir o projeto gerado: `docker compose exec backstage ls /tmp/fastflow-golden-paths` e `cat .../catalog-info.yaml` (anotações `fastflow.io/*` preenchidas).
+   - Pontos para discutir: por que validar no servidor, `createBackendModule` + extension point vs. fork, credenciais do iniciador, degradação graciosa sem token, e como a etapa 4 complementa isso (permissão `scaffolder.template.parameter.read`/`scaffolder.action.execute` por time).
 
 ## Próximos passos
 
-- **Etapa 3**: action `fastflow:governance:validate` + template NestJS (golden path) com `fetch:template` e `catalog:register`, opcionalmente disparando `workflow_dispatch` no GitHub Actions.
 - **Etapa 4**: `PermissionPolicy` via `policyExtensionPoint` com `createCatalogConditionalDecision`/`isEntityOwner`, e sign-in OIDC (Entra ID / Keycloak) mapeando claims de grupos para o catálogo.
 - Depois: TechDocs com publisher S3 e build no CI, plugins ArgoCD/SonarQube, OpenTelemetry, deploy em Kubernetes/OpenShift (probes, HPA, réplicas stateless) e métricas DORA/adoção.

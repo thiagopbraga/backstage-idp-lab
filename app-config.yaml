@@ -212,9 +212,9 @@ catalog:
     - type: file
       target: ../../catalog-info.yaml
 
-    # Local example template
+    # FastFlow golden paths (Software Templates) - stage 3
     - type: file
-      target: ../../examples/template/template.yaml
+      target: ../../examples/templates/nestjs-service/template.yaml
       rules:
         - allow: [Template]
 
@@ -233,6 +233,17 @@ catalog:
     #   target: https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/acme-corp.yaml
     #   rules:
     #     - allow: [User, Group]
+
+# Stage 3 - FastFlow scaffolder module (plugins/scaffolder-backend-module-fastflow)
+fastflow:
+  governance:
+    naming:
+      minLength: 3
+      maxLength: 40
+      allowedSuffixes: ['-api', '-service', '-worker', '-bff', '-web']
+  scaffolder:
+    # Where fastflow:publish:local writes generated projects (offline demo)
+    localOutputDir: ${FASTFLOW_LOCAL_OUTPUT_DIR:-/tmp/fastflow-golden-paths}
 
 # Stage 2 - code-quality plugin (plugins/code-quality-backend).
 # Without tokens every section is served from deterministic mock data, so the

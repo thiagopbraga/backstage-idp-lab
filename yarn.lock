@@ -3535,6 +3535,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/plugin-scaffolder-node-test-utils@npm:^0.3.16":
+  version: 0.3.16
+  resolution: "@backstage/plugin-scaffolder-node-test-utils@npm:0.3.16"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.11.0"
+    "@backstage/backend-test-utils": "npm:^1.11.8"
+    "@backstage/plugin-scaffolder-node": "npm:^0.13.8"
+    "@backstage/types": "npm:^1.2.2"
+    winston: "npm:^3.2.1"
+    winston-transport: "npm:^4.7.0"
+  peerDependencies:
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.30.2
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10c0/fe4bc3148464dcfa0cedecab47fc11b2c7141c1179c715074df7e7d1d19d72375f88e6a8555fb1b727073a5d51048620de38837608297026b45de4d997529ad6
+  languageName: node
+  linkType: hard
+
 "@backstage/plugin-scaffolder-node@npm:^0.13.8":
   version: 0.13.8
   resolution: "@backstage/plugin-scaffolder-node@npm:0.13.8"
@@ -5441,6 +5463,23 @@ __metadata:
     react-use: "npm:^17.2.4"
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
+"@internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:^, @internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:plugins/scaffolder-backend-module-fastflow":
+  version: 0.0.0-use.local
+  resolution: "@internal/backstage-plugin-scaffolder-backend-module-fastflow@workspace:plugins/scaffolder-backend-module-fastflow"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.11.0"
+    "@backstage/backend-test-utils": "npm:^1.11.8"
+    "@backstage/catalog-model": "npm:^1.10.2"
+    "@backstage/cli": "npm:^0.36.7"
+    "@backstage/config": "npm:^1.3.10"
+    "@backstage/errors": "npm:^1.3.2"
+    "@backstage/integration": "npm:^2.1.3"
+    "@backstage/plugin-catalog-node": "npm:^2.2.6"
+    "@backstage/plugin-scaffolder-node": "npm:^0.13.8"
+    "@backstage/plugin-scaffolder-node-test-utils": "npm:^0.3.16"
   languageName: unknown
   linkType: soft
 
@@ -13618,6 +13657,7 @@ __metadata:
     "@backstage/plugin-techdocs-backend": "npm:^2.4.0"
     "@backstage/plugin-user-settings-backend": "npm:^0.4.8"
     "@internal/backstage-plugin-code-quality-backend": "workspace:^"
+    "@internal/backstage-plugin-scaffolder-backend-module-fastflow": "workspace:^"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"
     node-gyp: "npm:^10.0.0"
