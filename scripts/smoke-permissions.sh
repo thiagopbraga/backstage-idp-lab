@@ -2,7 +2,8 @@
 # Exercises the FastFlow ownership policy with two guest identities:
 #   ANA_TOKEN   -> user:default/ana.souza   (group:default/claims-squad)
 #   BRUNO_TOKEN -> user:default/bruno.lima  (group:default/policy-squad)
-# Usage: BASE_URL=http://localhost:7007 ANA_TOKEN=... BRUNO_TOKEN=... scripts/smoke-permissions.sh
+#   ADMIN_TOKEN -> user:default/thiago.braga (group:default/fastflow, optional)
+# Usage: BASE_URL=http://localhost:7007 ANA_TOKEN=... BRUNO_TOKEN=... [ADMIN_TOKEN=...] scripts/smoke-permissions.sh
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:7007}"
@@ -82,6 +83,14 @@ expect "bruno scaffolds for policy-squad (member)" completed "$(wait_task "$BRUN
 echo "--- scaffolder tasks are private to their creator (isTaskOwner)"
 expect "bruno reads ana's task" 403 "$(status "$BRUNO_TOKEN" GET "/api/scaffolder/v2/tasks/$DENIED")"
 expect "ana reads her own task" 200 "$(status "$ANA_TOKEN" GET "/api/scaffolder/v2/tasks/$DENIED")"
+
+if [ -n "${ADMIN_TOKEN:-}" ]; then
+  echo "--- platform admin (break-glass)"
+  expect "thiago refreshes $CLAIMS" 200 "$(refresh "$ADMIN_TOKEN" "$CLAIMS")"
+  expect "thiago refreshes $POLICY" 200 "$(refresh "$ADMIN_TOKEN" "$POLICY")"
+  expect "decision: thiago deletes $POLICY" ALLOW "$(decision "$ADMIN_TOKEN" catalog.entity.delete "$POLICY")"
+  expect "thiago reads ana's task" 200 "$(status "$ADMIN_TOKEN" GET "/api/scaffolder/v2/tasks/$DENIED")"
+fi
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "permission smoke test FAILED ($FAILURES checks)"
