@@ -1,8 +1,9 @@
-/***/
 /**
- * The fastflow module for @backstage/plugin-scaffolder-backend.
+ * FastFlow scaffolder module: governance validation, graceful
+ * workflow_dispatch and an offline local publisher for golden paths.
  *
  * @packageDocumentation
  */
-
-export { scaffolderModule as default } from './module';
+export { scaffolderModuleFastflow as default } from './module';
+export * from './actions';
+export * from './governance/rules';

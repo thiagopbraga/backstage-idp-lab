@@ -5472,8 +5472,11 @@ __metadata:
   dependencies:
     "@backstage/backend-plugin-api": "npm:^1.11.0"
     "@backstage/backend-test-utils": "npm:^1.11.8"
+    "@backstage/catalog-model": "npm:^1.10.2"
     "@backstage/cli": "npm:^0.36.7"
-    "@backstage/plugin-scaffolder-backend": "npm:^4.2.1"
+    "@backstage/errors": "npm:^1.3.2"
+    "@backstage/integration": "npm:^2.1.3"
+    "@backstage/plugin-catalog-node": "npm:^2.2.6"
     "@backstage/plugin-scaffolder-node": "npm:^0.13.8"
     "@backstage/plugin-scaffolder-node-test-utils": "npm:^0.3.16"
   languageName: unknown
