@@ -70,4 +70,7 @@ backend.add(import('@backstage/plugin-signals-backend'));
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
 backend.add(import('@internal/backstage-plugin-code-quality-backend'));
+backend.add(
+  import('@internal/backstage-plugin-scaffolder-backend-module-fastflow'),
+);
 backend.start();
