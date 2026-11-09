@@ -93,6 +93,7 @@ COPY --from=build --chown=node:node /app/packages/backend/dist/bundle/ ./
 # Runtime config + demo catalog data
 COPY --chown=node:node app-config.yaml app-config.production.yaml app-config.docker.yaml ./
 COPY --chown=node:node examples ./examples
+COPY --chown=node:node catalog-info.yaml ./
 
 ENV NODE_ENV=production
 

@@ -1,17 +1,98 @@
+# Organization model for the lab. In production this is NOT hand-written: it is
+# ingested by an Entity Provider from the corporate directory
+# (@backstage/plugin-catalog-backend-module-msgraph for Entra ID, or the Keycloak
+# provider), so group membership in Backstage mirrors the IdP.
 ---
-# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-user
-apiVersion: backstage.io/v1alpha1
-kind: User
-metadata:
-  name: guest
-spec:
-  memberOf: [guests]
----
-# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-group
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
-  name: guests
+  name: engineering
+  title: Engineering
+  description: Root of the engineering organization.
+spec:
+  type: department
+  profile:
+    displayName: Engineering
+  children: [fastflow, claims-squad, policy-squad]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: fastflow
+  title: FastFlow (Platform Engineering)
+  description: Internal Developer Platform team. Owns Backstage, golden paths and CI/CD tooling.
 spec:
   type: team
+  profile:
+    displayName: FastFlow
+    email: fastflow@example.com
+  parent: engineering
   children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: claims-squad
+  title: Claims Squad
+  description: Stream-aligned team that owns claims intake and processing.
+spec:
+  type: team
+  profile:
+    displayName: Claims Squad
+    email: claims-squad@example.com
+  parent: engineering
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: policy-squad
+  title: Policy Squad
+  description: Stream-aligned team that owns policy quoting and issuance.
+spec:
+  type: team
+  profile:
+    displayName: Policy Squad
+    email: policy-squad@example.com
+  parent: engineering
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: thiago.braga
+spec:
+  profile:
+    displayName: Thiago Braga
+    email: thiago.braga@example.com
+  memberOf: [fastflow]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ana.souza
+spec:
+  profile:
+    displayName: Ana Souza
+    email: ana.souza@example.com
+  memberOf: [claims-squad]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: bruno.lima
+spec:
+  profile:
+    displayName: Bruno Lima
+    email: bruno.lima@example.com
+  memberOf: [policy-squad]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: carla.mendes
+spec:
+  profile:
+    displayName: Carla Mendes
+    email: carla.mendes@example.com
+  memberOf: [policy-squad]

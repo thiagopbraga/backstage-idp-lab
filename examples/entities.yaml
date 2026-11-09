@@ -1,41 +1,272 @@
+# Sample software catalog: two business domains owned by different squads plus
+# the platform domain owned by FastFlow. Annotations prefixed with fastflow.io/
+# are the lab's governance metadata (tier, criticality, data classification);
+# they are enforced later by the Scaffolder action and permission policy.
 ---
-# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-system
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: claims
+  title: Claims
+  description: Everything related to opening, assessing and paying insurance claims.
+spec:
+  owner: group:default/claims-squad
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: policy
+  title: Policy
+  description: Quoting, issuing and renewing insurance policies.
+spec:
+  owner: group:default/policy-squad
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: developer-platform
+  title: Developer Platform
+  description: Internal Developer Platform (IDP) capabilities.
+spec:
+  owner: group:default/fastflow
+---
+# ----------------------------------------------------------------- Systems
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: examples
+  name: claims-processing
+  title: Claims Processing
+  description: Claims intake, fraud scoring and settlement.
 spec:
-  owner: guests
+  owner: group:default/claims-squad
+  domain: claims
 ---
-# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-component
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: policy-quoting
+  title: Policy Quoting
+  description: Real-time quoting of auto and home policies.
+spec:
+  owner: group:default/policy-squad
+  domain: policy
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: fastflow-idp
+  title: FastFlow IDP
+  description: Backstage portal, golden paths and platform automation.
+spec:
+  owner: group:default/fastflow
+  domain: developer-platform
+---
+# ----------------------------------------------------------------- Claims
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: example-website
+  name: claims-api
+  title: Claims API
+  description: NestJS service that receives and tracks claims (FNOL).
+  tags: [nestjs, typescript, rest]
+  annotations:
+    github.com/project-slug: thiagopbraga/claims-api
+    sonarqube.org/project-key: claims-api
+    fastflow.io/tier: tier-1
+    fastflow.io/criticality: high
+    fastflow.io/data-classification: confidential
+  links:
+    - url: https://grafana.example.com/d/claims-api
+      title: Grafana dashboard
+      icon: dashboard
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/claims-squad
+  system: claims-processing
+  providesApis: [claims-api]
+  consumesApis: [policy-quote-api]
+  dependsOn:
+    - resource:default/claims-db
+    - resource:default/claims-events
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: fraud-scoring-worker
+  title: Fraud Scoring Worker
+  description: Consumes claim events and computes a fraud risk score.
+  tags: [nodejs, typescript, kafka]
+  annotations:
+    github.com/project-slug: thiagopbraga/fraud-scoring-worker
+    sonarqube.org/project-key: fraud-scoring-worker
+    fastflow.io/tier: tier-2
+    fastflow.io/criticality: high
+    fastflow.io/data-classification: restricted
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/claims-squad
+  system: claims-processing
+  dependsOn:
+    - resource:default/claims-events
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: claims-portal
+  title: Claims Portal
+  description: React web app where customers open and follow their claims.
+  tags: [react, typescript]
+  annotations:
+    github.com/project-slug: thiagopbraga/claims-portal
+    sonarqube.org/project-key: claims-portal
+    fastflow.io/tier: tier-2
+    fastflow.io/criticality: medium
+    fastflow.io/data-classification: confidential
+spec:
+  type: website
+  lifecycle: production
+  owner: group:default/claims-squad
+  system: claims-processing
+  consumesApis: [claims-api]
+---
+# ----------------------------------------------------------------- Policy
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: policy-quote-service
+  title: Policy Quote Service
+  description: Prices auto and home policies in real time.
+  tags: [nestjs, typescript, rest]
+  annotations:
+    github.com/project-slug: thiagopbraga/policy-quote-service
+    sonarqube.org/project-key: policy-quote-service
+    fastflow.io/tier: tier-1
+    fastflow.io/criticality: high
+    fastflow.io/data-classification: confidential
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/policy-squad
+  system: policy-quoting
+  providesApis: [policy-quote-api]
+  dependsOn:
+    - resource:default/policy-db
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: broker-quote-widget
+  title: Broker Quote Widget
+  description: Embeddable quote widget used by insurance brokers.
+  tags: [react, typescript]
+  annotations:
+    fastflow.io/tier: tier-3
+    fastflow.io/criticality: low
+    fastflow.io/data-classification: internal
 spec:
   type: website
   lifecycle: experimental
-  owner: guests
-  system: examples
-  providesApis: [example-grpc-api]
+  owner: group:default/policy-squad
+  system: policy-quoting
+  consumesApis: [policy-quote-api]
 ---
-# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-api
+# ----------------------------------------------------------------- APIs
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  name: example-grpc-api
+  name: claims-api
+  title: Claims API
+  description: Public contract of the Claims service.
 spec:
-  type: grpc
-  lifecycle: experimental
-  owner: guests
-  system: examples
+  type: openapi
+  lifecycle: production
+  owner: group:default/claims-squad
+  system: claims-processing
   definition: |
-    syntax = "proto3";
-
-    service Exampler {
-      rpc Example (ExampleMessage) returns (ExampleMessage) {};
-    }
-
-    message ExampleMessage {
-      string example = 1;
-    };
+    openapi: 3.0.3
+    info:
+      title: Claims API
+      version: 1.0.0
+    paths:
+      /claims:
+        post:
+          summary: Open a claim (first notice of loss)
+          responses:
+            '201':
+              description: Claim created
+      /claims/{id}:
+        get:
+          summary: Get claim status
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: string
+          responses:
+            '200':
+              description: Claim found
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: policy-quote-api
+  title: Policy Quote API
+  description: Real-time quoting contract.
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/policy-squad
+  system: policy-quoting
+  definition: |
+    openapi: 3.0.3
+    info:
+      title: Policy Quote API
+      version: 2.1.0
+    paths:
+      /quotes:
+        post:
+          summary: Request a quote
+          responses:
+            '200':
+              description: Quote calculated
+---
+# ----------------------------------------------------------------- Resources
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: claims-db
+  title: Claims database
+  description: Amazon RDS for PostgreSQL holding claims data.
+  annotations:
+    fastflow.io/data-classification: confidential
+spec:
+  type: database
+  owner: group:default/claims-squad
+  system: claims-processing
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: claims-events
+  title: claims.events topic
+  description: Kafka topic with claim lifecycle events.
+spec:
+  type: kafka-topic
+  owner: group:default/claims-squad
+  system: claims-processing
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: policy-db
+  title: Policy database
+  description: Amazon Aurora PostgreSQL holding policies and quotes.
+  annotations:
+    fastflow.io/data-classification: confidential
+spec:
+  type: database
+  owner: group:default/policy-squad
+  system: policy-quoting

@@ -208,6 +208,10 @@ catalog:
     - type: file
       target: ../../examples/entities.yaml
 
+    # This repository's own descriptor (the portal is in its own catalog)
+    - type: file
+      target: ../../catalog-info.yaml
+
     # Local example template
     - type: file
       target: ../../examples/template/template.yaml
