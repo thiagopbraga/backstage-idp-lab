@@ -1,0 +1,26 @@
+{# GitHub Actions expressions use the same delimiters as the Backstage
+   template engine, so the workflow body is wrapped in a raw block. #}
+{%- raw %}
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Summary
+        run: echo "Built ${{ github.repository }}@${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+{% endraw %}

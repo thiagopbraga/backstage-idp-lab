@@ -2,3 +2,6 @@ dist
 dist-types
 coverage
 .vscode
+
+# Nunjucks skeletons are not valid YAML/TS until rendered by the scaffolder
+examples/templates/*/skeleton
