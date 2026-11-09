@@ -1,54 +1,70 @@
+# Production overlay. Loaded after app-config.yaml:
+#   node packages/backend --config app-config.yaml --config app-config.production.yaml
+# Every environment-specific value comes from environment variables (injected by
+# Kubernetes/OpenShift Secrets + ConfigMaps, or docker-compose's .env locally).
+# No secret is ever committed to this file.
+
 app:
-  # Should be the same as backend.baseUrl when using the `app-backend` plugin.
-  baseUrl: http://localhost:7007
+  # In production the frontend is served by the backend (app-backend plugin),
+  # so app.baseUrl must equal backend.baseUrl.
+  baseUrl: ${BACKEND_BASE_URL:-http://localhost:7007}
 
 backend:
-  # Note that the baseUrl should be the URL that the browser and other clients
-  # should use when communicating with the backend, i.e. it needs to be
-  # reachable not just from within the backend host, but from all of your
-  # callers. When its value is "http://localhost:7007", it's strictly private
-  # and can't be reached by others.
-  baseUrl: http://localhost:7007
-  # The listener can also be expressed as a single <host>:<port> string. In this case we bind to
-  # all interfaces, the most permissive setting. The right value depends on your specific deployment.
+  baseUrl: ${BACKEND_BASE_URL:-http://localhost:7007}
+  # Bind to all interfaces inside the container.
   listen: ':7007'
+  cors:
+    origin: ${BACKEND_BASE_URL:-http://localhost:7007}
 
   # config options: https://node-postgres.com/apis/client
   database:
     client: pg
     connection:
       host: ${POSTGRES_HOST}
-      port: ${POSTGRES_PORT}
+      port: ${POSTGRES_PORT:-5432}
       user: ${POSTGRES_USER}
       password: ${POSTGRES_PASSWORD}
-      # https://node-postgres.com/features/ssl
-      # you can set the sslmode configuration option via the `PGSSLMODE` environment variable
-      # see https://www.postgresql.org/docs/current/libpq-ssl.html Table 33.1. SSL Mode Descriptions (e.g. require)
+      # Managed Postgres (RDS/Aurora/Azure Database) in a regulated environment
+      # must use TLS. Set PGSSLMODE=require (or verify-full) and mount the CA:
       # ssl:
-      #   ca: # if you have a CA file and want to verify it you can uncomment this section
-      #     $file: <file-path>/ca/server.crt
+      #   ca:
+      #     $file: /etc/backstage/certs/rds-ca.pem
 
-auth:
-  providers:
-    guest: {}
+  # Static tokens for machine callers (e.g. CI publishing TechDocs, CMDB sync jobs).
+  # auth:
+  #   externalAccess:
+  #     - type: static
+  #       options:
+  #         token: ${CI_EXTERNAL_ACCESS_TOKEN}
+  #         subject: ci-pipelines
+
+# Sign-in in production is SSO only (OIDC: Microsoft Entra ID or Red Hat build of
+# Keycloak). The guest provider refuses to run outside NODE_ENV=development unless
+# explicitly enabled (see app-config.docker.yaml, used ONLY for the local demo).
+# auth:
+#   environment: production
+#   providers:
+#     oidc:
+#       production:
+#         metadataUrl: ${OIDC_METADATA_URL}
+#         clientId: ${OIDC_CLIENT_ID}
+#         clientSecret: ${OIDC_CLIENT_SECRET}
+#         prompt: auto
+#         signIn:
+#           resolvers:
+#             - resolver: emailMatchingUserEntityProfileEmail
 
 catalog:
-  # Overrides the default list locations from app-config.yaml as these contain example data.
-  # See https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog for more details
-  # on how to get entities into the catalog.
+  # Paths are relative to the working directory of the container (/app).
   locations:
-    # Local example data, replace this with your production config, these are intended for demo use only.
-    # File locations are relative to the backend process, typically in a deployed context, such as in a Docker container, this will be the root
     - type: file
       target: ./examples/entities.yaml
 
-    # Local example template
     - type: file
       target: ./examples/template/template.yaml
       rules:
         - allow: [Template]
 
-    # Local example organizational data
     - type: file
       target: ./examples/org.yaml
       rules:
