@@ -6,3 +6,8 @@
  */
 
 export { permissionModuleFastflowPolicy as default } from './module';
+export {
+  FastFlowPermissionPolicy,
+  DEFAULT_POLICY_OPTIONS,
+} from './policy/FastFlowPermissionPolicy';
+export type { FastFlowPolicyOptions } from './policy/FastFlowPermissionPolicy';
